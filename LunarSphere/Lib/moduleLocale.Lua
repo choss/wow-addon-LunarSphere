@@ -35,7 +35,9 @@ local LSMACRO;
 local LS = "LunarSphere"		-- Not to be localized =)
 local LSE = "LunarSphereExporter"	-- Not to be localized =)
 
-local localeVersion = 1.52;
+local localeVersion = 1.80;
+-- Shown as text: tostring(1.80) would print "1.8"
+local localeVersionText = string.format("%.2f", localeVersion);
 
 ---------------------
 -- Backdrop Settings
@@ -73,7 +75,7 @@ if (locale == "enUS") or (force_enUS == true) then
 	LSAUCCLASSES3 = "Consumable";
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Settings",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menu Button Settings",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Assignment",
@@ -644,7 +646,7 @@ elseif (locale == "frFR") then
 	LSAUCCLASSES3 = "consommable";
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Settings",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menu Button Settings",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Assignment",
@@ -1214,7 +1216,7 @@ elseif (locale == "deDE") then
 	LSAUCCLASSES3 = "Verbrauchs";
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Einstellungen  [v." .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Einstellungen  [v." .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Einstellungen",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menubutton Einstellungen",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Belegung",
@@ -1786,7 +1788,7 @@ elseif (locale == "ruRU") then
 	LSAUCCLASSES3 = "Consumable";
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Settings",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menu Button Settings",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Assignment",
@@ -2359,7 +2361,7 @@ elseif (locale == "esES") then
 	LSAUCCLASSES3 = "consumible";
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Settings",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menu Button Settings",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Assignment",
@@ -2932,7 +2934,7 @@ elseif (locale == "esMX") then
 	LSAUCCLASSES3 = "Consumable";	
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v." .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Settings",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menu Button Settings",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Assignment",
@@ -3504,7 +3506,7 @@ else
 	LSAUCCLASSES3 = "Consumable"
 
 	Lunar.Locale = {
-		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v."  .. localeVersion .. "]",
+		["WINDOW_TITLE_SETTINGS"] = LS .. " Settings  [v."  .. localeVersionText .. "]",
 		["WINDOW_TITLE_BUTTONSETTINGS"] = "Button Settings",
 		["WINDOW_TITLE_MENUSETTINGS"] = "Menu Button Settings",
 		["WINDOW_TITLE_ACTIONASSIGNMENT"] = "Assignment",

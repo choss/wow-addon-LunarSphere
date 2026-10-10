@@ -22,7 +22,7 @@ if (not Lunar.Button) then
 end
 
 -- Set our current version for the module (used for version checking later on)
-Lunar.Button.version = 1.52;
+Lunar.Button.version = 1.80;
 
 -- Create post WOW 2.2 bug fix, if Stage 5 comes out before 2.2 comes out.
 -- Otherwise, I will rename GetActionFromMacroText in this code to SecureCmdOptionParse
@@ -1536,11 +1536,13 @@ function Lunar.Button:Create(name, parent, includeHeader)
 
 			for i = 1, 3 do 
 				actionType = self:GetAttribute("*type-S" .. state .. i);
-				self:SetAttribute("*spell" .. i, "");
-				self:SetAttribute("*action" .. i, "");
-				self:SetAttribute("*item" .. i, "");
-				self:SetAttribute("*macro" .. i, "");
-				self:SetAttribute("*macrotext" .. i, "");
+				-- Clear with nil, not "": the secure "macro" action runs RunMacro() whenever
+				-- the macro attribute is set (even to ""), so macrotext would never run.
+				self:SetAttribute("*spell" .. i, nil);
+				self:SetAttribute("*action" .. i, nil);
+				self:SetAttribute("*item" .. i, nil);
+				self:SetAttribute("*macro" .. i, nil);
+				self:SetAttribute("*macrotext" .. i, nil);
 				-- An empty unit is not "no unit": modern clients drop the click when the unit
 				-- attribute is set but UnitExists() fails, so clear these with nil.
 				self:SetAttribute("unit" .. i, nil);
@@ -4996,6 +4998,28 @@ function Lunar.Button:ButtonHasAction(buttonID, stance)
 
 end
 
+-- Returns the state header that owns a button. Its _onstate-state snippet pushes the
+-- stored "*type-S.." data into the live click attributes (via _childupdate).
+function Lunar.Button:GetStateHeader(buttonID)
+	if (buttonID > 10) then
+		return _G["LunarMenu" .. _G["LunarSub" .. buttonID .. "Button"].parentID .. "ButtonHeader"];
+	elseif (buttonID == 0) then
+		return _G["LunarSphereMainButtonHeader"];
+	else
+		-- Main buttons are children of their own menu header, not of LunarSphereButtonHeader
+		return _G["LunarMenu" .. buttonID .. "ButtonHeader"];
+	end
+end
+
+-- Re-applies a button's current state so changed actions take effect right away
+function Lunar.Button:RefreshButtonState(buttonID)
+	local header = Lunar.Button:GetStateHeader(buttonID);
+	if (header) then
+		header:SetAttribute("_bindingset", "");
+		header:SetAttribute("state-state", header:GetAttribute("state"));
+	end
+end
+
 function Lunar.Button:SetupStances(button)
 
 	local useStances = Lunar.Button:GetUseStances(button:GetID());
@@ -7029,29 +7053,8 @@ function Lunar.Button:Swap(srcButton, destButton, childSwap)
 		Lunar.Button:SetupKeybinds(srcButton);
 		Lunar.Button:SetupKeybinds(destButton);
 
-		if (srcID > 10) then
-			_G["LunarMenu" .. srcButton.parentID .. "ButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarMenu" .. srcButton.parentID .. "ButtonHeader"]:SetAttribute('state-state', 
-			_G["LunarMenu" .. srcButton.parentID .. "ButtonHeader"]:GetAttribute('state'));
-		elseif (srcID == 0) then
-			_G["LunarSphereMainButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarSphereMainButtonHeader"]:SetAttribute('state-state', _G["LunarSphereMainButtonHeader"]:GetAttribute('state'));
-		else		
-			_G["LunarSphereButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarSphereButtonHeader"]:SetAttribute('state-state', _G["LunarSphereButtonHeader"]:GetAttribute('state'));
-		end
-
-		if (destID > 10) then
-			_G["LunarMenu" .. destButton.parentID .. "ButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarMenu" .. destButton.parentID .. "ButtonHeader"]:SetAttribute('state-state', 
-			_G["LunarMenu" .. destButton.parentID .. "ButtonHeader"]:GetAttribute('state'));
-		elseif (srcID == 0) then
-			_G["LunarSphereMainButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarSphereMainButtonHeader"]:SetAttribute('state-state', _G["LunarSphereMainButtonHeader"]:GetAttribute('state'));
-		else		
-			_G["LunarSphereButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarSphereButtonHeader"]:SetAttribute('state-state', _G["LunarSphereButtonHeader"]:GetAttribute('state'));
-		end
+		Lunar.Button:RefreshButtonState(srcID);
+		Lunar.Button:RefreshButtonState(destID);
 
 		Lunar.Button:Update(srcButton);
 		Lunar.Button:Update(destButton);

@@ -23,6 +23,11 @@ Bug Fixes
 
 * Fixed clicks on buttons and the sphere doing nothing: an empty "unit" attribute made the game
 drop every click (the client ignores a click when the button's unit doesn't exist).
+* Fixed trinket, mount, food/drink, equipment set and menu bar buttons (all macro-text actions)
+doing nothing when clicked: an empty macro attribute stopped the macro text from running.
+* Fixed main buttons keeping their old action after being changed in the button settings
+(the change only took effect after entering combat or reloading).
+* The settings window shows the correct version (1.80).
 * Replaced every API removed from the game (item, spell book, add-on, map, reputation,
 merchant, gossip, chat and container functions) with the modern C_ versions.
 * Set-up that would change secure buttons in combat (logging in or reloading in combat, template

@@ -92,7 +92,7 @@
 
 LUNARSPHERE_CHAT = "|cFF82B8E1Lunar|cFFA1CAE8Sph|cFFC7DFF1ere: |r";
 LUNAR_ICON_PREFIX = "Interface\\Icons\\"
-LUNAR_CURRENT_VERSION = 1.52;
+LUNAR_CURRENT_VERSION = 1.80;
 
 -- Luunar Backdrop texture
 LS_BACKDROP = {

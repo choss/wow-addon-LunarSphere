@@ -22,7 +22,7 @@ if (not Lunar.Export) then
 end
 
 -- Must match LUNAR_CURRENT_VERSION in LunarSphere.lua
-Lunar.Export.version = 1.52;
+Lunar.Export.version = 1.80;
 
 function Lunar.Export:ExportData(dataType, arg1, arg2)
 

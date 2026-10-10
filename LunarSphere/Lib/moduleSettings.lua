@@ -34,7 +34,7 @@ if (not Lunar.Settings) then
 end
 
 -- Set our current version for the module (used for version checking later on)
-Lunar.Settings.version = 1.52;
+Lunar.Settings.version = 1.80;
 
 local GetCursorInfo = GetCursorInfo;
 
@@ -3927,16 +3927,11 @@ function Lunar.Settings:CreateButtonDialog()
 		end
 		Lunar.Button:LoadButtonData(Lunar.Settings.buttonEdit);
 
-		if (Lunar.Settings.buttonEdit > 10) then
-			_G["LunarMenu" .. button.parentID .. "ButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarMenu" .. button.parentID .. "ButtonHeader"]:SetAttribute("state-state", _G["LunarMenu" .. button.parentID .. "ButtonHeader"]:GetAttribute("state"));
-		elseif (Lunar.Settings.buttonEdit == 0) then
-			_G["LunarSphereMainButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarSphereMainButtonHeader"]:SetAttribute("state-state", _G["LunarSphereMainButtonHeader"]:GetAttribute("state"));
+		-- Push the new action into the button's live click attributes (main buttons 1-10
+		-- belong to their own menu header, not to LunarSphereButtonHeader)
+		Lunar.Button:RefreshButtonState(Lunar.Settings.buttonEdit);
+		if (Lunar.Settings.buttonEdit == 0) then
 			Lunar.Sphere:SetSphereTexture();
-		else		
-			_G["LunarSphereButtonHeader"]:SetAttribute("_bindingset", "");
-			_G["LunarSphereButtonHeader"]:SetAttribute("state-state", _G["LunarSphereButtonHeader"]:GetAttribute("state"));
 		end
 
 		-- Update menu opening types

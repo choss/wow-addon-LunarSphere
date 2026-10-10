@@ -35,7 +35,7 @@ if (not Lunar.Items) then
 end
 
 -- Set our current version for the module (used for version checking later on)
-Lunar.Items.version = 1.52;
+Lunar.Items.version = 1.80;
 
 -- Create our database settings
 Lunar.Items.RunInitialize = false;
@@ -1962,11 +1962,12 @@ function Lunar.Items:UpdateSpecialButtons()
 							if (tonumber(state) == stance) then
 								
 								actionType = button:GetAttribute("*type-S" .. state .. clickType);
-								button:SetAttribute("*spell" .. clickType, "");
-								button:SetAttribute("*action" .. clickType, "");
-								button:SetAttribute("*item" .. clickType, "");
-								button:SetAttribute("*macro" .. clickType, "");
-								button:SetAttribute("*macrotext" .. clickType, "");
+								-- Clear with nil, not "" (an empty *macro attribute stops macrotext from running)
+								button:SetAttribute("*spell" .. clickType, nil);
+								button:SetAttribute("*action" .. clickType, nil);
+								button:SetAttribute("*item" .. clickType, nil);
+								button:SetAttribute("*macro" .. clickType, nil);
+								button:SetAttribute("*macrotext" .. clickType, nil);
 								if (LunarSphereSettings.buttonEditMode ~= true) and (actionType) and (actionType ~= "none") then
 									actionName = button:GetAttribute("*" .. actionType .. "-S" .. state .. clickType);
 									actionName2 = button:GetAttribute("*" .. actionType .. "2-S" .. state .. clickType);
