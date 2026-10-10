@@ -300,7 +300,7 @@ function Lunar.Button:Initialize()
 	]]
 );
 
-	sphereMainHeader:SetAttribute("*unit*", "");
+	sphereMainHeader:SetAttribute("*unit*", nil);
 	sphereMainHeader:SetAttribute('statebindings', '*:S0;');
 	sphereMainHeader:SetAttribute('childraise', true);
 
@@ -327,7 +327,7 @@ function Lunar.Button:Initialize()
 
 	sphereHeader:SetFrameLevel(10);	
 
-	sphereHeader:SetAttribute("*unit*", "");
+	sphereHeader:SetAttribute("*unit*", nil);
 	sphereHeader:SetAttribute('statebindings', "*:S0;");
 	sphereHeader:SetAttribute('childraise', false);
 	sphereHeader:SetAttribute('childraise', true);
@@ -1541,8 +1541,10 @@ function Lunar.Button:Create(name, parent, includeHeader)
 				self:SetAttribute("*item" .. i, "");
 				self:SetAttribute("*macro" .. i, "");
 				self:SetAttribute("*macrotext" .. i, "");
-				self:SetAttribute("unit" .. i, "");
-				self:SetAttribute("target-slot" .. i, "");
+				-- An empty unit is not "no unit": modern clients drop the click when the unit
+				-- attribute is set but UnitExists() fails, so clear these with nil.
+				self:SetAttribute("unit" .. i, nil);
+				self:SetAttribute("target-slot" .. i, nil);
 				if (editMode ~= true) and (actionType) and (actionType ~= "none") then
 					if (actionType == "pet") then
 						petButton = true;
@@ -1568,8 +1570,16 @@ function Lunar.Button:Create(name, parent, includeHeader)
 							self:SetAttribute("*" .. actionType .. i, actionName);
 						end
 					end
-					self:SetAttribute("unit" .. i, self:GetAttribute("unit-S" .. state .. i));
-					self:SetAttribute("target-slot" .. i, self:GetAttribute("target-slot-S" .. state .. i));
+					local unit = self:GetAttribute("unit-S" .. state .. i);
+					if (unit == "") then
+						unit = nil;
+					end
+					local targetSlot = self:GetAttribute("target-slot-S" .. state .. i);
+					if (targetSlot == "") then
+						targetSlot = nil;
+					end
+					self:SetAttribute("unit" .. i, unit);
+					self:SetAttribute("target-slot" .. i, targetSlot);
 				else
 					self:SetAttribute("*type" .. i, "spell");
 				end
@@ -2461,7 +2471,7 @@ function Lunar.Button:UpdateLastUsedSubmenu(menuButton, childButton, clickType, 
 						elseif (buttonType == 6) then
 							menuButton:SetAttribute("unit-S" .. stance .. updateClick, "focus");
 						else
-							menuButton:SetAttribute("unit-S" .. stance .. updateClick, "");
+							menuButton:SetAttribute("unit-S" .. stance .. updateClick, nil);
 						end
 
 						if (buttonType > 51) and (buttonType < 60) then
@@ -3012,7 +3022,8 @@ function Lunar.Button:PetButtonCheck(button, index, disabled)
 		button:SetAttribute("unit","pet")
 		RegisterUnitWatch(button);
 	else
-		button:SetAttribute("unit","")
+		-- nil, not "": an empty unit makes modern clients ignore the click
+		button:SetAttribute("unit", nil)
 		UnregisterUnitWatch(button);
 	end
 	
@@ -4800,7 +4811,7 @@ function Lunar.Button:LoadButtonData(buttonID)
 					elseif (buttonType == 6) then
 						_G[buttonName]:SetAttribute("unit-S" .. stance .. clickType, "focus");
 					else
-						_G[buttonName]:SetAttribute("unit-S" .. stance .. clickType, "");
+						_G[buttonName]:SetAttribute("unit-S" .. stance .. clickType, nil);
 					end
 
 					if (buttonType >= 90) and (buttonType <= 95) then

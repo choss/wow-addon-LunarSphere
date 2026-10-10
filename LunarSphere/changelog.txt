@@ -21,6 +21,8 @@ spell cast counts are shown.
 Bug Fixes
 ======================
 
+* Fixed clicks on buttons and the sphere doing nothing: an empty "unit" attribute made the game
+drop every click (the client ignores a click when the button's unit doesn't exist).
 * Replaced every API removed from the game (item, spell book, add-on, map, reputation,
 merchant, gossip, chat and container functions) with the modern C_ versions.
 * Set-up that would change secure buttons in combat (logging in or reloading in combat, template
