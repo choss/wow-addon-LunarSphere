@@ -31,8 +31,14 @@ jobs:
       - name: Write release.json
         id: meta
         run: |
-          zip=$(ls .release/*.zip | grep -v -- '-nolib' | head -n 1)
-          name=$(basename "$zip")
+          # The packager names the zip after `git describe`, which picks up our own
+          # build-N tags (LunarSphere-build-2-1-g<sha>.zip). Name it ourselves instead:
+          # <TOC version>-build<run number>-<short sha>
+          toc_version=$(grep -m1 '^## Version:' LunarSphere/LunarSphere_Mainline.toc | sed 's/^## Version:[[:space:]]*//; s/[[:space:]]*$//')
+          name="LunarSphere-${toc_version}-build${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}.zip"
+          packaged=$(ls .release/*.zip | grep -v -- '-nolib' | head -n 1)
+          zip=".release/$name"
+          mv "$packaged" "$zip"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
           echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           python3 - "$name" > .release/release.json <<'EOF'
