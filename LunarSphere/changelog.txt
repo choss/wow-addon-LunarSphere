@@ -6,6 +6,7 @@ Feature Changes
 ======================
 
 * Updated for World of Warcraft: Midnight (12.1.0 and 12.1.5) and the WoW: Forever beta (1.60.1).
+* WoW: Forever loads its own LunarSphere_Camelot.toc (interface 16001).
 * LunarSphere works in combat with Midnight's secret values: sphere gauges and sphere text keep
 updating in combat, spell cooldowns use the game's cooldown swipe and countdown numbers, and
 spell cast counts are shown.
