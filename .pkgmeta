@@ -10,4 +10,5 @@ ignore:
 
 move-folders:
   LunarSphere/LunarSphere: LunarSphere
+  LunarSphere/LunarSphereExporter: LunarSphereExporter
 

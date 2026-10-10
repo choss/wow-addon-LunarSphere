@@ -31,20 +31,12 @@ if (not Lunar.Object.dropdownData) then
 	Lunar.Object.dropdownData = {};	
 end
 
-local GetSpellTabInfo = GetSpellTabInfo
-if C_SpellBook.GetSpellBookSkillLineInfo then
-	GetSpellTabInfo = Lunar.API:Deconfabulate(C_SpellBook.GetSpellBookSkillLineInfo)
-end
-
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
-end
-
-local GetSpellTexture = GetSpellTexture
-if C_Spell.GetSpellTexture then
-	GetSpellTexture = C_Spell.GetSpellTexture
-end
+-- Client API compatibility (see moduleCompat.lua)
+local Compat = Lunar.Compat;
+local GetSpellTabInfo = Compat.GetSpellTabInfo;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetSpellTexture = Compat.GetSpellTexture;
+local GetItemInfo = Compat.GetItemInfo;
 
 -- Create our local dropdown menu info table to be reused multiple times
 local dropInfo = {};
@@ -247,10 +239,43 @@ function Lunar.Object:CreateColorSelector(xLoc, yLoc, objectText, objectSetting,
 		ColorPickerFrame:Hide();
 
 		local colorR, colorG, colorB, colorA = unpack(LunarSphereSettings[objectSetting]);
---			colorR = LunarSphereSettings[objectSetting][1];
---			colorG = LunarSphereSettings[objectSetting][2];
---			colorB = LunarSphereSettings[objectSetting][3];
-			
+		colorA = colorA or 1;
+
+		local function ApplyColor(r, g, b, a)
+			LunarSphereSettings[objectSetting][1] = r;
+			LunarSphereSettings[objectSetting][2] = g;
+			LunarSphereSettings[objectSetting][3] = b;
+			if (hasAlpha) and (a) then
+				LunarSphereSettings[objectSetting][4] = a;
+			end
+			if (colorChangeFunction) then
+				colorChangeFunction();
+			end
+			_G[tempObject:GetName() .. "Color"]:SetColorTexture(r, g, b);
+		end
+
+		-- Modern clients (10.2.5+, Midnight and WoW: Forever)
+		if (ColorPickerFrame.SetupColorPickerAndShow) then
+			ColorPickerFrame:SetupColorPickerAndShow({
+				r = colorR, g = colorG, b = colorB,
+				hasOpacity = hasAlpha,
+				opacity = colorA,
+				swatchFunc = function()
+					local r, g, b = ColorPickerFrame:GetColorRGB();
+					ApplyColor(r, g, b, hasAlpha and ColorPickerFrame:GetColorAlpha());
+				end,
+				opacityFunc = function()
+					local r, g, b = ColorPickerFrame:GetColorRGB();
+					ApplyColor(r, g, b, hasAlpha and ColorPickerFrame:GetColorAlpha());
+				end,
+				cancelFunc = function()
+					ApplyColor(colorR, colorG, colorB, colorA);
+				end,
+			});
+			return;
+		end
+
+		-- Older clients
 		ColorPickerFrame.opacityFunc = Lunar.API.BlankFunction;
 		if (hasAlpha) then
 			ColorPickerFrame.opacityFunc =
@@ -263,32 +288,18 @@ function Lunar.Object:CreateColorSelector(xLoc, yLoc, objectText, objectSetting,
 		ColorPickerFrame.func =
 		function ()
 			local r, g, b = ColorPickerFrame:GetColorRGB();
-			LunarSphereSettings[objectSetting][1] = r;
-			LunarSphereSettings[objectSetting][2] = g;
-			LunarSphereSettings[objectSetting][3] = b;
-			colorChangeFunction();
-			_G[tempObject:GetName() .. "Color"]:SetColorTexture(r, g, b);
+			ApplyColor(r, g, b);
 		end
 
 		ColorPickerFrame.hasOpacity = self.hasAlpha; --false;
 		ColorPickerFrame:SetColorRGB(colorR, colorG, colorB);
 		ColorPickerFrame.previousValues = {r = colorR, g = colorG, b = colorB, opacity = colorA}; --nil};
 		ColorPickerFrame.cancelFunc =
-		function(self)
-			LunarSphereSettings[objectSetting][1] = ColorPickerFrame.previousValues.r;
-			LunarSphereSettings[objectSetting][2] = ColorPickerFrame.previousValues.g;
-			LunarSphereSettings[objectSetting][3] = ColorPickerFrame.previousValues.b;
-			if (self.hasAlpha) then
-				LunarSphereSettings[objectSetting][4] = ColorPickerFrame.previousValues.opacity;
-			end
-			colorChangeFunction();
-			_G[tempObject:GetName() .. "Color"]:SetColorTexture(
-				LunarSphereSettings[objectSetting][1],
-				LunarSphereSettings[objectSetting][2],
-				LunarSphereSettings[objectSetting][3]);
+		function()
+			ApplyColor(colorR, colorG, colorB, colorA);
 		end;
 
-		ShowUIPanel(ColorPickerFrame);	
+		ShowUIPanel(ColorPickerFrame);
 	end);
 		
 	-- return the object
@@ -1094,7 +1105,7 @@ function Lunar.Object.IconPlaceHolder_OnClick(self)
 
 			_, spellRank = Lunar.API:GetSpellBookItemName(updateID, updateData);
 --			nextSpellName = GetSpellBookItemName(updateID + 1, updateData);
-			spellRank = "(" .. spellRank .. ")";
+			spellRank = "(" .. (spellRank or "") .. ")";
 
 			--_, spellID = C_SpellBook.GetSpellBookItemInfo(updateID, updateData);
 			actionName = Lunar.API:GetSpellBookItemName(updateID, updateData);
@@ -1120,7 +1131,9 @@ function Lunar.Object.IconPlaceHolder_OnClick(self)
 					end
 --				end
 				-- We don't want spell ranks on the first spell tab or professions tab data ... these are generic
-				if (updateID <= (select(4, GetSpellTabInfo(1))) or updateID >= (select(3, GetSpellTabInfo(5)))) then
+				local generalTabSlots = select(4, GetSpellTabInfo(1)) or 0;
+				local professionTabOffset = select(3, GetSpellTabInfo(5));
+				if (updateID <= generalTabSlots) or (professionTabOffset and (updateID >= professionTabOffset)) then
 					spellRank = "";
 				end
 				actionName = actionName .. spellRank;
@@ -1214,14 +1227,13 @@ function Lunar.Object.SphereActionIconPlaceHolder_OnClick(self)
 
 		if (cursorType == "spell") then
 			actionName = Lunar.API:GetSpellBookItemName(cursorID, cursorData);
-			objectTexture = GetSpellTexture(cursorID, cursorData);
-		elseif (updateType == "battlepet") then
+			objectTexture = Lunar.Compat.GetSpellBookItemTexture(cursorID, cursorData);
+		elseif (cursorType == "battlepet") then
 			-- Set the name of the spell and its texture
-			_, _, _, _, _, _, _, actionName, objectTexture, _, displayID = C_PetJournal.GetPetInfoByPetID(updateID);
-		elseif (updateType == "mount") then
+			_, _, _, _, _, _, _, actionName, objectTexture = C_PetJournal.GetPetInfoByPetID(cursorID);
+		elseif (cursorType == "mount") and (C_MountJournal) then
 			-- Set the name of the spell and its texture
-			actionName, _, objectTexture = C_MountJournal.GetMountInfo(updateData)
-			displayID, _, _, _, _ = C_MountJournal.GetMountInfoExtra(updateData)
+			actionName, _, objectTexture = C_MountJournal.GetMountInfoByID(cursorID);
 		elseif (cursorType == "item") then
 			_, actionName, _, _, _, _, _, _, _, objectTexture = GetItemInfo(cursorID);
 			actionName = "item:" .. Lunar.API:GetItemID(actionName);

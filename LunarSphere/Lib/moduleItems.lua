@@ -52,13 +52,17 @@ Lunar.Items.itemSkillText = string.gsub(Lunar.Items.itemSkillText, "%(%%d%)", "%
 
 Lunar.Items.itemMinLevel = string.gsub(ITEM_MIN_LEVEL, "%%d", "(%%d+)");
 
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
-end
+-- Client API compatibility (see moduleCompat.lua)
+local Compat = Lunar.Compat;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetItemInfo = Compat.GetItemInfo;
+local GetItemCount = Compat.GetItemCount;
+local GetItemSpell = Compat.GetItemSpell;
+local IsSpellKnown = Compat.IsSpellKnown;
+local SetPortraitToTexture = Compat.SetPortraitToTexture;
 
-GetFactionInfoByID = GetFactionInfoByID
-if C_Reputation.GetFactionDataByID then
+local GetFactionInfoByID = GetFactionInfoByID
+if C_Reputation and C_Reputation.GetFactionDataByID then
 	GetFactionInfoByID = Lunar.API:Deconfabulate(C_Reputation.GetFactionDataByID)
 end
 
@@ -319,7 +323,7 @@ function Lunar.Items:OnEvent(event, arg1, _, _, _, _, _, _, arg8)
 		end
 	end
 	
-	if (event == "LEARNED_SPELL_IN_TAB") or (event == "COMPANION_LEARNED") then
+	if (event == "LEARNED_SPELL_IN_TAB") or (event == "LEARNED_SPELL_IN_SKILL_LINE") or (event == "COMPANION_LEARNED") or (event == "NEW_MOUNT_ADDED") then
 		Lunar.Items.scanSpellMounts = true;
 		Lunar.Items.bagUpdateTimer = 0.2;
 	end
@@ -378,7 +382,13 @@ function Lunar.Items:OnUpdate(elapsed)
 	Lunar.Items.eventFrame:UnregisterEvent("UPDATE_INSTANCE_INFO");
 
 	-- Add support for spell mounts (when you learn a new one ... very rare)
-	Lunar.Items.eventFrame:RegisterEvent("LEARNED_SPELL_IN_TAB");
+	-- (LEARNED_SPELL_IN_TAB was renamed to LEARNED_SPELL_IN_SKILL_LINE on modern clients)
+	if (Compat.isModern) then
+		Lunar.Items.eventFrame:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE");
+		Lunar.Items.eventFrame:RegisterEvent("NEW_MOUNT_ADDED");
+	else
+		Lunar.Items.eventFrame:RegisterEvent("LEARNED_SPELL_IN_TAB");
+	end
 	if ( Lunar.API:IsVersionRetail() == true ) then
 		Lunar.Items.eventFrame:RegisterEvent("COMPANION_LEARNED");
 	end
@@ -594,13 +604,11 @@ function Lunar.Items:BuildLookupStrings()
 		end
 	end
 
-	local tempWeapon, tempArmor, tempConsume = LSAUCCLASSES1, LSAUCCLASSES2, LSAUCCLASSES3
-
-	if( Lunar.API:IsVersionRetail() ) then
-		local _, tempReagent = C_AuctionHouse.GetAuctionItemSubClasses(12);
-	else
-		local _, tempReagent = GetAuctionItemSubClasses(12);
-	end
+	-- Localized item class names, straight from the client (2 = weapon, 4 = armor, 0 = consumable)
+	local tempWeapon = Compat.GetItemClassName(2) or LSAUCCLASSES1;
+	local tempArmor = Compat.GetItemClassName(4) or LSAUCCLASSES2;
+	local tempConsume = Compat.GetItemClassName(0) or LSAUCCLASSES3;
+	local tempReagent = nil; -- (falls back to the item sub type of Simple Wood below)
 --	local tempWeapon,tempArmor,_,tempConsume;
 --	local _, tempReagent = C_AuctionHouse.GetAuctionItemSubClasses(10);
 
@@ -669,7 +677,12 @@ function Lunar.Items:GetItemSpell(itemCatagory)
 
 	local index, itemSpell;
 
-	for index = 1, (string.len(itemSpellID[itemCatagory]) / 6) do 
+	-- The ID string is removed once saved search data exists for this category
+	if not itemSpellID[itemCatagory] then
+		return nil;
+	end
+
+	for index = 1, (string.len(itemSpellID[itemCatagory]) / 6) do
 		itemSpell = GetItemSpell(tonumber(string.sub(itemSpellID[itemCatagory], (index - 1) * 6 + 1, index * 6 - 1)));
 
 		if (itemSpell) then
@@ -1366,6 +1379,13 @@ end
 --  *********************
 function Lunar.Items:UpdateLowHighItems()
 
+	-- This rewrites the attributes of our secure buttons, which isn't possible while in
+	-- combat. Flag it and run it again once combat ends.
+	if InCombatLockdown() then
+		Lunar.Items.combatUpdate = true;
+		return;
+	end
+
 	-- Create our locals
 	local low, high, lowSpecial, highSpecial, lowCombo, highCombo, itemType
 	local lowCooldown, highCooldown, lowNoCooldown, highNoCooldown, usableItem, bestRange;
@@ -1408,7 +1428,7 @@ function Lunar.Items:UpdateLowHighItems()
 		allMounts[index] = nil;
 	end
 
-	function SelectRandomMount(RndSwim, RndFly, RndGround)
+	local function SelectRandomMount(RndSwim, RndFly, RndGround)
 		if (submerged and RndSwim) then
 			return RndSwim
 		elseif (canFly and RndFly) then
@@ -1730,7 +1750,7 @@ function Lunar.Items:UpdateLowHighItems()
 			RndStrider = nil;
 			RndMount = nil;
 
-			function print_table(tbl, tbl_name)
+			local function print_table(tbl, tbl_name)
 				print("Table ", tbl_name, " debug:")
 				for key, value in pairs(tbl) do --actualcode
 					print(key, value)
@@ -1882,7 +1902,7 @@ function Lunar.Items:CheckItemUseStatus(itemID, itemType)
 
 	if string.find(specialUseID.pvp, itemID) then
 		usable = nil;
-		if ((GetNumBattlefieldStats() or (0)) > 0) then
+		if (GetNumBattlefieldStats) and ((GetNumBattlefieldStats() or (0)) > 0) then
 			usable = true;
 		end
 	end
@@ -2753,8 +2773,8 @@ function Lunar.Items:ModifyItemDataTable(tableName, modifyType, itemName, itemCo
 					-- print("Lunar.Items:ModifyItemDataTable 2735")
 					local pos = table.getn(itemData[tableName])
 					if (itemLink ~= "spellMount") then
--- print("Lunar.Items:ModifyItemDataTable 2346", tableName, modifyType, itemName, itemCount, itemLevel, itemMinLevel, C_Item.GetItemSpell(itemName))
-						itemData[tableName][pos].spell = C_Item.GetItemSpell(itemName);
+-- print("Lunar.Items:ModifyItemDataTable 2346", tableName, modifyType, itemName, itemCount, itemLevel, itemMinLevel, Lunar.Compat.GetItemSpell(itemName))
+						itemData[tableName][pos].spell = Lunar.Compat.GetItemSpell(itemName);
 					else
 -- print("Lunar.Items:ModifyItemDataTable 2349 -> tableName: ", tableName, " modifyType: ", modifyType,  " itemName: ", itemName,  " itemCount: ", itemCount,  " itemLevel: ", itemLevel,  " itemMinLevel: ", itemMinLevel,  " string.sub(itemName, 3) : ", string.sub(itemName, 3))
 						itemData[tableName][pos].spell = GetSpellInfo(string.sub(itemName, 3));

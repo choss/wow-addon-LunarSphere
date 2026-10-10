@@ -363,12 +363,12 @@
 					-- gray, hide and show it (so they layer properly), and hide the container
 					-- that is also linked to it.
 					for index = maxIndex, 10, -1 do
-						getglobal(tabChainName .. index):SetBackdropColor(0.9,0.9,0.9,1.0);
-						getglobal(tabChainName .. index .. "Container"):Hide();
+						_G[tabChainName .. index]:SetBackdropColor(0.9,0.9,0.9,1.0);
+						_G[tabChainName .. index .. "Container"]:Hide();
 					end
 					for index = 9, 1, -1 do
-						getglobal(tabChainName .. "0" .. index):SetBackdropColor(0.9,0.9,0.9,1.0);
-						getglobal(tabChainName .. "0" .. index .. "Container"):Hide();
+						_G[tabChainName .. "0" .. index]:SetBackdropColor(0.9,0.9,0.9,1.0);
+						_G[tabChainName .. "0" .. index .. "Container"]:Hide();
 					end
 				else
 					
@@ -379,20 +379,20 @@
 					-- gray, hide and show it (so they layer properly), and hide the container
 					-- that is also linked to it.
 					for index = maxIndex, 1, -1 do
-						getglobal(tabChainName .. index):SetBackdropColor(0.9,0.9,0.9,1.0);
-						getglobal(tabChainName .. index .. "Container"):Hide();
+						_G[tabChainName .. index]:SetBackdropColor(0.9,0.9,0.9,1.0);
+						_G[tabChainName .. index .. "Container"]:Hide();
 					end
 				end
 
 				-- Now, set this tab to being highlighted and show its container
 				self:SetBackdropColor(0.0,0.5,1.0,1.0);
-				getglobal(self:GetName() .. "Container"):Show();
+				_G[self:GetName() .. "Container"]:Show();
 			</OnMouseDown>
 			<OnEnter>
-				getglobal(self:GetName() .. "Text"):SetTextColor(1.0,1.0,1.0,1.0);
+				_G[self:GetName() .. "Text"]:SetTextColor(1.0,1.0,1.0,1.0);
 			</OnEnter>
 			<OnLeave>
-				getglobal(self:GetName() .. "Text"):SetTextColor(1.0,0.82,0.0,1.0);
+				_G[self:GetName() .. "Text"]:SetTextColor(1.0,0.82,0.0,1.0);
 			</OnLeave>
 		</Scripts>
 	</Frame>

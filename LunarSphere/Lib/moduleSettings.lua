@@ -12,15 +12,16 @@
 --  * Module Setup
 --  *********************
 
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
-end
-
-local GetSpellTexture = GetSpellTexture
-if C_Spell.GetSpellTexture then
-	GetSpellTexture = C_Spell.GetSpellTexture
-end
+-- Client API compatibility (see moduleCompat.lua)
+local Compat = Lunar.Compat;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetSpellTexture = Compat.GetSpellTexture;
+local GetItemInfo = Compat.GetItemInfo;
+local GetItemSpell = Compat.GetItemSpell;
+local GetItemIcon = Compat.GetItemIcon;
+local GetNumAddOns = Compat.GetNumAddOns;
+local GetAddOnInfo = Compat.GetAddOnInfo;
+local SetPortraitToTexture = Compat.SetPortraitToTexture;
 
 -- Create our Lunar object if it's not made
 if (not Lunar) then
@@ -2047,10 +2048,8 @@ function Lunar.Settings:Initialize()
 			function (self)
 				LunarSphereSettings.skinTooltips = (self:GetChecked() == true);
 				Lunar.Settings:SetEnabled(_G["LSSettingsskinAllTooltips"], LunarSphereSettings.skinTooltips);
-				if (LunarSphereSettings.skinTooltips ~= true) and (Lunar.origBackdrop) then
-					GameTooltip:SetBackdrop(Lunar.origBackdrop);
-					GameTooltip:SetBackdropColor(unpack(Lunar.origBackdropColor));
-					GameTooltip:SetBackdropBorderColor(unpack(Lunar.origBackdropBorderColor));
+				if (LunarSphereSettings.skinTooltips ~= true) then
+					Lunar.Button:SkinTooltip(false);
 				end
 			end);
 
@@ -2128,7 +2127,7 @@ function Lunar.Settings:Initialize()
 			function(self)
 				local anchor = _G["LSSettingsAnchor"];
 				anchor:ClearAllPoints();
-				anchor:SetPoint("TOPLEFT", "UIParent", "BOTTOMRIGHT", -CONTAINER_OFFSET_X - 13, CONTAINER_OFFSET_Y + 9);
+				anchor:SetPoint("TOPLEFT", "UIParent", "BOTTOMRIGHT", -(CONTAINER_OFFSET_X or -4) - 13, (CONTAINER_OFFSET_Y or 70) + 9);
 			
 				local point, relativeTo, relativePoint, xOfs, yOfs, settingName;
 				point, relativeTo, relativePoint, xOfs, yOfs = anchor:GetPoint();
@@ -2516,6 +2515,15 @@ function Lunar.Settings:Initialize()
 					Lunar.API:HideWorldmap((self:GetChecked() == true));
 				end);
 				tempObject:SetHitRectInsets(0, -90, 0, 0);
+
+				-- The minimap world map button no longer exists on modern clients
+				if (not MiniMapWorldMapButton) then
+					tempObject:SetChecked(false);
+					tempObject:Disable();
+					if (_G[tempObject:GetName() .. "Text"]) then
+						_G[tempObject:GetName() .. "Text"]:SetTextColor(0.5, 0.5, 0.5);
+					end
+				end
 
 				-- Hide Calendar option
 				tempObject = Lunar.Object:CreateCheckbox(10, -110, Lunar.Locale["HIDE_CALENDAR"], "hideCalendar", true, tempFrameContainer,
@@ -2952,7 +2960,7 @@ function Lunar.Settings:Initialize()
 						local totalKB = 0;
 						for i = 1, GetNumAddOns() do
 							name, _, _, enabled, loadable, _, _ = GetAddOnInfo(i);
-							if (enabled == 1) then
+							if (enabled) then
 								usedKB = GetAddOnMemoryUsage(name);
 								totalKB = totalKB + usedKB;
 							end
@@ -4507,7 +4515,7 @@ function Lunar.Settings.SetButtonMenuValue(self)
 	Lunar.Button:SetupMenuAngle(Lunar.Settings.buttonEdit);
 end
 
-function setStanceIconDimensions(iconObject, size)
+local function setStanceIconDimensions(iconObject, size)
 	local background = iconObject:GetNormalTexture();
 	local highlight = iconObject:GetHighlightTexture();
 	local pushed = iconObject:GetPushedTexture();
@@ -5001,7 +5009,7 @@ if not (LunarSphereSettings.memoryDisableSpeech) then
 		if GetCursorInfo() then
 		
 			local button = _G["LSSettingsassignmentEditButton"];
-			local cursorType, cursorID, cursorData = GetCursorInfo();
+			local cursorType, cursorID, cursorData, cursorSpellID = GetCursorInfo();
 			local actionName, actionRank, objectTexture;
 
 			-- Now, let's find out if we were actually dragging a PET or MOUNT
@@ -5016,12 +5024,13 @@ if not (LunarSphereSettings.memoryDisableSpeech) then
 
 			if (cursorType == "spell") then
 				actionName, actionRank = Lunar.API:GetSpellBookItemName(cursorID, cursorData);
-				objectTexture = C_Spell.GetSpellTexture(cursorID, cursorData);
+				objectTexture = Lunar.Compat.GetSpellBookItemTexture(cursorID, cursorData);
 
 				-- Fix for Call Pet for hunters.
-				local _, spellID = C_SpellBook.GetSpellBookItemInfo(cursorID, cursorData);
-				local spellName = GetSpellInfo(spellID);
-				if (actionName ~= spellName) then
+				local _, spellID = Lunar.Compat.GetSpellBookItemInfo(cursorID, cursorData);
+				spellID = cursorSpellID or spellID;
+				local spellName = spellID and GetSpellInfo(spellID);
+				if (spellName) and (actionName ~= spellName) then
 					actionName = spellName;
 				end
 
@@ -5031,6 +5040,7 @@ if not (LunarSphereSettings.memoryDisableSpeech) then
 			end
 
 			if (actionName) then
+				objectTexture = objectTexture or "";
 				if (actionRank) and (actionRank ~= "") and (not (string.find(actionRank, "%d"))) then --and not (actionRank == Lunar.Speech.summonText) then
 					button.actionData = actionName .. "(" .. actionRank .. "):::" .. objectTexture;
 				else
@@ -6284,8 +6294,8 @@ function Lunar.Settings:CreateAnchorPlaceholders()
 				--"TOPLEFT", "UIParent", "BOTTOMRIGHT", -CONTAINER_OFFSET_X - 13, CONTAINER_OFFSET_Y + 9);
 				(LunarSphereSettings.anchorCornerpoint or "Topleft"), UIParent,
 				(LunarSphereSettings.anchorCornerrelativePoint or "Bottomright"),
-				(LunarSphereSettings.anchorCornerxOfs or (-CONTAINER_OFFSET_X - 13)),
-				(LunarSphereSettings.anchorCorneryOfs or (CONTAINER_OFFSET_Y + 9)));
+				(LunarSphereSettings.anchorCornerxOfs or (-(CONTAINER_OFFSET_X or -4) - 13)),
+				(LunarSphereSettings.anchorCorneryOfs or ((CONTAINER_OFFSET_Y or 70) + 9)));
 		end
 				
 		frame:SetFrameStrata("DIALOG");
@@ -6298,11 +6308,17 @@ function Lunar.Settings:CreateAnchorPlaceholders()
 		pos = LunarSphereSettings["anchorCorner" .. anchorSetting] +  1;
 		temp = Lunar.API:CreateFrame("Frame", "LSSettings" .. frame.tooltipName, frame, 80, 60, nil, true, 0)
 
-		if not GameTooltip.GetBackdrop then
-		    Mixin(GameTooltip, BackdropTemplateMixin)
+		-- Preview box that looks like a tooltip. We give it its own backdrop instead of
+		-- copying (and mixing a backdrop into) the GameTooltip, which would taint it.
+		if (temp.SetBackdrop) then
+			temp:SetBackdrop(BACKDROP_TOOLTIP_16_16_5555 or {
+				bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+				edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+				tile = true, tileSize = 16, edgeSize = 16,
+				insets = { left = 5, right = 5, top = 5, bottom = 5 },
+			});
+			temp:SetBackdropColor(0.09, 0.09, 0.19, 1);
 		end
-
-		temp:SetBackdrop(GameTooltip:GetBackdrop());
 		temp:SetPoint(Lunar.Button.tooltipPos[9 - pos], frame, Lunar.Button.tooltipPos[pos]);
 		temp:RegisterForDrag("LeftButton");
 		temp:SetScript("OnDragStart", Lunar.Settings.AnchorRadio_OnDragStart);

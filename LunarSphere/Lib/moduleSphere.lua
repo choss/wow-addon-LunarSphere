@@ -408,10 +408,13 @@ end
 --   Locals
 --  *********************/
 
-local HasPetSpells = HasPetSpells
-if C_SpellBook.HasPetSpells then
-	HasPetSpells = C_SpellBook.HasPetSpells
-end
+-- Client API compatibility (see moduleCompat.lua)
+local Compat = Lunar.Compat;
+local HasPetSpells = Compat.HasPetSpells;
+local GetWatchedFactionInfo = Compat.GetWatchedFactionInfo;
+local GetActiveSpecGroup = Compat.GetActiveSpecGroup;
+local GetInventorySlotInfo = Compat.GetInventorySlotInfo;
+local SetPortraitToTexture = Compat.SetPortraitToTexture;
 
 -- Sphere object data, holds data for the art
 local sphereData = {};		
@@ -724,6 +727,9 @@ function Lunar.Sphere:Initialize()
 	sphereData.background:RegisterEvent("ZONE_CHANGED_NEW_AREA");
 	if ( Lunar.API:IsVersionClassic() == false ) then
 		sphereData.background:RegisterEvent("ACTIVE_TALENT_GROUP_CHANGED");
+		if (Compat.isModern) then
+			sphereData.background:RegisterEvent("ACTIVE_PLAYER_SPECIALIZATION_CHANGED");
+		end
 	end
 
 	-- Item/Spell/Macro pick-up events
@@ -791,7 +797,7 @@ function Lunar.Sphere:Initialize()
 		
 		end
 
-		if (event == "ACTIVE_TALENT_GROUP_CHANGED") then
+		if (event == "ACTIVE_TALENT_GROUP_CHANGED") or (event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED") then
 			Lunar.API:Print(GetActiveTalentGroup());
 		end
 
@@ -1132,6 +1138,18 @@ function Lunar.Sphere:SetPortraitBorder()
 end
 
 function Lunar.Sphere:SetSphereText(sphereText)
+
+	-- Secret text (Midnight, in combat) can't be compared, so just display it
+	if Compat.IsSecret(sphereText) then
+		sphereData.sphereText:SetText(sphereText);
+		dataTracking.sphereText = nil;
+		if (LunarSphereSettings.showSphereTextShadow == false) then
+			sphereData.sphereTextBack:Hide();
+		else
+			sphereData.sphereTextBack:Show();
+		end
+		return;
+	end
 
 	if (dataTracking.sphereText ~= sphereText) then
 
@@ -1500,6 +1518,19 @@ function Lunar.Sphere:ShowSphereTextPercentage(toggle)
 	Lunar.Sphere:UpdateSphere();
 end
 
+-- Registers an event for one of the sphere frames. Unit events are only registered for the
+-- unit we track (instead of every unit in the raid), and missing events are ignored.
+local function RegisterSphereEvent(frame, event, unit)
+	if (not event) or (event == "") then
+		return;
+	end
+	if (unit) and (frame.RegisterUnitEvent) and (string.sub(event, 1, 5) == "UNIT_") and (event ~= "UNIT_PET_EXPERIENCE") then
+		frame:RegisterUnitEvent(event, unit);
+	else
+		frame:RegisterEvent(event);
+	end
+end
+
 function Lunar.Sphere:SetSphereTextType(eventType, specificID)
 	sphereData.main:UnregisterAllEvents();
 	sphereData.main.updateCount = nil;
@@ -1516,27 +1547,27 @@ function Lunar.Sphere:SetSphereTextType(eventType, specificID)
 	end
 
 	if (eventType == LS_EVENT_POWER) then
-		sphereData.main:RegisterEvent(dataTracking.eventWatch[dataTracking.powerName[dataTracking.powerType]]);
+		RegisterSphereEvent(sphereData.main, dataTracking.eventWatch[dataTracking.powerName[dataTracking.powerType]], sphereData.main.source);
 		LunarSphereSettings.sphereTextType = eventType; --dataTracking.powerName[dataTracking.powerType];
 		sphereData["sphereEvent"] = dataTracking.eventWatch[dataTracking.powerName[dataTracking.powerType]];
 	elseif (eventType == LS_EVENT_EXTRA_POWER) then
 		local _, playerClass = UnitClass("player");
 		local extraPowerType = dataTracking.extraPowerType[playerClass];
 
-		sphereData.main:RegisterEvent(dataTracking.eventWatch[dataTracking.powerName[extraPowerType]]);
+		RegisterSphereEvent(sphereData.main, dataTracking.eventWatch[dataTracking.powerName[extraPowerType]], sphereData.main.source);
 		LunarSphereSettings.sphereTextType = eventType; --dataTracking.powerName[dataTracking.powerType];
 		sphereData["sphereEvent"] = dataTracking.eventWatch[dataTracking.powerName[extraPowerType]];
 	elseif ((eventType == LS_EVENT_NONE) or (eventType == nil)) then
 		LunarSphereSettings.sphereTextType = LS_EVENT_NONE;
 	else
 		if (dataTracking.eventWatch[eventType]) then
-			sphereData.main:RegisterEvent(dataTracking.eventWatch[eventType]);
+			RegisterSphereEvent(sphereData.main, dataTracking.eventWatch[eventType], sphereData.main.source);
 		end	
 		LunarSphereSettings.sphereTextType = eventType;
 	end
 
 	if (eventType == LS_EVENT_P_EXP) then
-		sphereData.main:RegisterEvent("UNIT_PET");
+		RegisterSphereEvent(sphereData.main, "UNIT_PET", "player");
 	elseif (eventType == LS_EVENT_SPHERE_COOLDOWN) then
 		sphereData.main:RegisterEvent("SPELL_UPDATE_COOLDOWN");
 		sphereData.main:RegisterEvent("BAG_UPDATE_COOLDOWN");
@@ -1554,7 +1585,7 @@ function Lunar.Sphere:SetSphereTextType(eventType, specificID)
 	end
 
 	if ((eventType == LS_EVENT_POWER) or (eventType == LS_EVENT_FIVE)) then
-		dataTracking.playerMana = UnitPower("player", 0);
+		dataTracking.playerMana = Compat.Readable(UnitPower("player", 0), dataTracking.playerMana or 0);
 	end
 	
 	LunarSphereSettings.sphereTextTypeID = specificID;
@@ -1597,12 +1628,12 @@ function Lunar.Sphere:SetGaugeType(gaugeID, eventType, specificID)
 
 		eventWatch = dataTracking.powerName[extraPowerType];
 	end
-	sphereData["gauge" .. gaugeID .. "Border"]:RegisterEvent(dataTracking.eventWatch[eventWatch]);
+	RegisterSphereEvent(sphereData["gauge" .. gaugeID .. "Border"], dataTracking.eventWatch[eventWatch], sphereData["gauge" .. gaugeID .. "Border"].source);
 
 	sphereData[gaugeID .. "Event"] = dataTracking.eventWatch[eventWatch];
 
 	if (eventType == LS_EVENT_P_EXP) then
-		sphereData["gauge" .. gaugeID .. "Border"]:RegisterEvent("UNIT_PET");
+		RegisterSphereEvent(sphereData["gauge" .. gaugeID .. "Border"], "UNIT_PET", "player");
 	end
 
 	if ((eventType >= LS_EVENT_T_HEALTH) and (eventType <= LS_EVENT_T_POWER)) then
@@ -1637,7 +1668,7 @@ function Lunar.Sphere:SetGaugeType(gaugeID, eventType, specificID)
 	dataTracking["animate" .. gaugeID] = nil;
 
 	if ((eventType == LS_EVENT_POWER) or (LS_EVENT_FIVE)) then
-		dataTracking.playerMana = UnitPower("player", 0);
+		dataTracking.playerMana = Compat.Readable(UnitPower("player", 0), dataTracking.playerMana or 0);
 	end
 
 	LunarSphereSettings[smallID .. "GaugeTypeID"] = specificID;
@@ -1645,8 +1676,110 @@ function Lunar.Sphere:SetGaugeType(gaugeID, eventType, specificID)
 	Lunar.Sphere:UpdateGauge(gaugeID);
 end
 
+-- /***********************************************
+--  * Secret value (Midnight) gauge support
+--  *********************
+--
+--  While in combat, Midnight hands out health and power values as "secrets": we can't
+--  compare them or do math with them. The gauges still work in combat by letting the
+--  client evaluate curves for us (UnitHealthPercent / UnitPowerPercent) and passing the
+--  (secret) results straight to texture rotation and alpha, which accept secrets.
+
+local gaugeCurves = {};
+
+local function CreateGaugeCurve(curveType, ...)
+	local curve = C_CurveUtil.CreateCurve();
+	if (curveType) then
+		curve:SetType(curveType);
+	end
+	local i;
+	for i = 1, select("#", ...), 2 do
+		curve:AddPoint((select(i, ...)), (select(i + 1, ...)));
+	end
+	return curve;
+end
+
+-- Returns the curves used to draw a gauge with the given direction and starting angle
+local function GetGaugeCurves(dir, angle)
+	local key = dir .. ":" .. angle;
+	local curves = gaugeCurves[key];
+	if (not curves) then
+		local step = Enum.LuaCurveType.Step;
+		curves = {
+			-- Same rotation the readable path uses: (percent * 360 * dir + angle) degrees clockwise
+			rotation = CreateGaugeCurve(Enum.LuaCurveType.Linear, 0, -math.rad(angle), 1, -math.rad(360 * dir + angle)),
+			-- The gauge fill is hidden at 0%
+			visible = CreateGaugeCurve(step, 0, 0, 0.0001, 1),
+			-- The "half full" piece is shown from 50%, the cover below 50%
+			half = CreateGaugeCurve(step, 0, 0, 0.5, 1),
+			cover = CreateGaugeCurve(step, 0, 1, 0.5, 0),
+		};
+		gaugeCurves[key] = curves;
+	end
+	return curves;
+end
+
+-- Evaluates a secret health / power percentage (0 - 1) through a curve
+local function EvaluateSecretSource(source, curve)
+	if (source.kind == "health") then
+		return UnitHealthPercent(source.unit, true, curve);
+	end
+	return UnitPowerPercent(source.unit, source.powerType, source.unmodified, curve);
+end
+
+-- Returns a description of the secret value behind a gauge / text type, or nil if the
+-- value for that type can be read normally.
+local function GetSecretSource(checkType)
+	if (not Compat.hasSecrets) or (not UnitHealthPercent) or (not C_CurveUtil) then
+		return nil;
+	end
+
+	local unit, kind, powerType, unmodified;
+	if (checkType == LS_EVENT_HEALTH) then
+		unit, kind = "player", "health";
+	elseif (checkType == LS_EVENT_T_HEALTH) then
+		unit, kind = "target", "health";
+	elseif (checkType == LS_EVENT_POWER) then
+		unit, kind = "player", "power";
+	elseif (checkType == LS_EVENT_T_POWER) then
+		unit, kind = "target", "power";
+	elseif (checkType == LS_EVENT_COMBO) then
+		unit, kind, powerType = "player", "power", Enum.PowerType.ComboPoints;
+	elseif (checkType == LS_EVENT_EXTRA_POWER) then
+		local _, playerClass = UnitClass("player");
+		powerType = dataTracking.extraPowerType[playerClass];
+		if (not powerType) or (powerType == Enum.PowerType.Runes) or (powerType == -1) then
+			return nil;
+		end
+		unit, kind, unmodified = "player", "power", true;
+	else
+		return nil;
+	end
+
+	local current, maximum;
+	if (kind == "health") then
+		current, maximum = UnitHealth(unit), UnitHealthMax(unit);
+	else
+		current, maximum = UnitPower(unit, powerType, unmodified), UnitPowerMax(unit, powerType, unmodified);
+	end
+
+	if Compat.AnySecret(current, maximum) then
+		return {kind = kind, unit = unit, powerType = powerType, unmodified = unmodified};
+	end
+	return nil;
+end
+
+Lunar.Sphere.GetSecretSource = GetSecretSource;
+Lunar.Sphere.EvaluateSecretSource = EvaluateSecretSource;
+
+-- Shows or hides one of the gauge pieces using its alpha (works with secret alphas too)
+local function SetGaugePieceAlpha(piece, alpha)
+	piece:Show();
+	piece:SetAlpha(alpha);
+end
+
 function Lunar.Sphere:UpdateGauge(gaugeType)
-	
+
 	local max = math.max;
 	local spherePercent = 0;
 	local checkType, checkTypeID, gaugeHalf, gaugeCover, gauge, gaugeStart, gaugeAnimate, dir, angle;
@@ -1683,7 +1816,22 @@ function Lunar.Sphere:UpdateGauge(gaugeType)
 	else
 		return;
 	end
-	
+
+	-- Secret values (Midnight, in combat): let the client do the math through curves
+	local secretSource = GetSecretSource(checkType);
+	if (secretSource) then
+		local curves = GetGaugeCurves(dir, angle);
+		gauge:GetNormalTexture():SetRotation(EvaluateSecretSource(secretSource, curves.rotation));
+		gauge:SetAlpha(EvaluateSecretSource(secretSource, curves.visible));
+		SetGaugePieceAlpha(gaugeHalf, EvaluateSecretSource(secretSource, curves.half));
+		SetGaugePieceAlpha(gaugeCover, EvaluateSecretSource(secretSource, curves.cover));
+
+		-- Animation needs math, so restart it once the values are readable again
+		dataTracking["gauge" .. gaugeType .. "Start"] = nil;
+		dataTracking["animate" .. gaugeType] = false;
+		return;
+	end
+
 	if (checkType == LS_EVENT_POWER) then --or (checkType == "energy") or (checkType == "rage"))   then
 		if UnitPowerMax("player") > 0 then
 			spherePercent =	UnitPower("player") / UnitPowerMax("player") * 100;
@@ -1712,7 +1860,7 @@ function Lunar.Sphere:UpdateGauge(gaugeType)
 				spherePercent = 0;
 			end
 		-- Everything else
-		elseif (powerToTrack ~= -1) then
+		elseif (powerToTrack) and (powerToTrack ~= -1) then
 			if UnitPowerMax("player", powerToTrack) > 0 then
 				spherePercent = UnitPower("player", powerToTrack, true) / UnitPowerMax("player", powerToTrack, true) * 100;
 			else
@@ -1748,12 +1896,18 @@ function Lunar.Sphere:UpdateGauge(gaugeType)
 	elseif (checkType == LS_EVENT_FIVE) then
 		local checkMana = UnitPower("player");
 		gaugeStart = nil;
-		if (checkMana < dataTracking.playerMana) then
-			dataTracking.playerMana = checkMana;
-			dataTracking.fiveSec = 5;
-			gaugeStart = nil;
+		-- The five second rule tracker needs to compare mana values, which isn't
+		-- possible while they are secret.
+		if (not Compat.IsSecret(checkMana)) then
+			if (checkMana < dataTracking.playerMana) then
+				dataTracking.playerMana = checkMana;
+				dataTracking.fiveSec = 5;
+				gaugeStart = nil;
+			end
+			spherePercent = 100 - (dataTracking.fiveSec / 5) * 100;
+		else
+			spherePercent = 100;
 		end
-		spherePercent = 100 - (dataTracking.fiveSec / 5) * 100;
 		if (spherePercent > 100) then
 			spherePercent = 100;
 		end
@@ -1773,9 +1927,12 @@ function Lunar.Sphere:UpdateGauge(gaugeType)
 				valueMax = max - min;
 				currentValue = value - min;
 			end
+			if (valueMax <= 0) then
+				valueMax = 1;
+			end
 		end
 		if (checkTypeID == 1) then
-			local bubbleSize = math.floor(valueMax / 20)
+			local bubbleSize = math.max(math.floor(valueMax / 20), 1);
 			local currentBubble = currentValue - math.floor(currentValue / bubbleSize) * bubbleSize;
 			spherePercent = currentBubble / bubbleSize * 100
 		else
@@ -1809,33 +1966,24 @@ function Lunar.Sphere:UpdateGauge(gaugeType)
 		spherePercent = 100;
 	end
 
-	if (spherePercent <= 0) then
-		gaugeHalf:Hide();
-		gaugeHalf:SetID(0);
-		gaugeCover:Show();
-		gauge:SetAlpha(0);
-	end
-
+	-- Show the pieces of the gauge. We use the pieces' alpha for this (instead of
+	-- showing / hiding them) so the readable and the secret paths can't get out of sync.
 	if (spherePercent > 0) then
-		if ((spherePercent >= 50) and (gaugeHalf:GetID() ~= 1)) then
-			gaugeHalf:Show();
-			gaugeHalf:SetID(1);
-			gaugeCover:Hide();
-		elseif ((spherePercent < 50) and (gaugeHalf:GetID() == 1)) then
-			gaugeHalf:Hide();
-			gaugeHalf:SetID(0);
-			gaugeCover:Show();
-		end
 		gauge:SetAlpha(1);
 	else
 		gauge:SetAlpha(0);
 	end
+	if (spherePercent >= 50) then
+		SetGaugePieceAlpha(gaugeHalf, 1);
+		SetGaugePieceAlpha(gaugeCover, 0);
+	else
+		SetGaugePieceAlpha(gaugeHalf, 0);
+		SetGaugePieceAlpha(gaugeCover, 1);
+	end
 
---	local newAngle = (math.floor(spherePercent * dir * 3.6) + angle)
-
-	Lunar.API:RotateTexture(gauge:GetNormalTexture(), (math.floor(spherePercent * dir * 3.6) + angle), 0.5, 0.5)
+	-- Rotate the gauge fill. Texture:SetRotation rotates counter-clockwise, our angles are clockwise.
+	gauge:GetNormalTexture():SetRotation(-math.rad(math.floor(spherePercent * dir * 3.6) + angle));
 end
-
 function Lunar.Sphere:UpdateSphere()
 
 	local sphereText = "";
@@ -1846,6 +1994,20 @@ function Lunar.Sphere:UpdateSphere()
 	checkTypeID = LunarSphereSettings.sphereTextTypeID;
 
 	if (checkType == LS_EVENT_SPHERE_COUNT) or (checkType == LS_EVENT_SPHERE_COOLDOWN) then
+		return;
+	end
+
+	-- Secret values (Midnight, in combat): display them without doing any math on them
+	local secretSource = Lunar.Sphere.GetSecretSource(checkType);
+	if (secretSource) then
+		if (showAsPercent) and (checkTypeID ~= 1) and (CurveConstants) and (CurveConstants.ScaleTo100) then
+			sphereText = Compat.FloorText(Lunar.Sphere.EvaluateSecretSource(secretSource, CurveConstants.ScaleTo100)) .. (LunarSphereSettings.sphereTextEnd or "");
+		elseif (secretSource.kind == "health") then
+			sphereText = UnitHealth(secretSource.unit);
+		else
+			sphereText = UnitPower(secretSource.unit, secretSource.powerType);
+		end
+		Lunar.Sphere:SetSphereText(sphereText);
 		return;
 	end
 
@@ -1909,15 +2071,17 @@ function Lunar.Sphere:UpdateSphere()
 			sphereText = UnitHealth("player");
 		end
 	elseif (checkType == LS_EVENT_COMBO) then
-		if (showAsPercent) then
---			sphereText = math.floor(GetComboPoints("player") / 5 * 100) .. LunarSphereSettings.sphereTextEnd;
-			sphereText = math.floor(GetComboPoints("player") / UnitPowerMax("player") * 100) .. LunarSphereSettings.sphereTextEnd;
+		local comboPoints = UnitPower("player", Enum.PowerType.ComboPoints);
+		local comboMax = UnitPowerMax("player", Enum.PowerType.ComboPoints);
+		if (showAsPercent) and (comboMax > 0) then
+			sphereText = math.floor(comboPoints / comboMax * 100) .. LunarSphereSettings.sphereTextEnd;
 		else
-			sphereText = GetComboPoints("player");
+			sphereText = comboPoints;
 		end
 	elseif (checkType == LS_EVENT_FIVE) then
 		local checkMana = UnitPower("player");
-		if (checkMana < dataTracking.playerMana) then
+		-- Can't compare mana while it is a secret value (Midnight, in combat)
+		if (not Compat.IsSecret(checkMana)) and (checkMana < dataTracking.playerMana) then
 			dataTracking.playerMana = checkMana;
 			dataTracking.fiveSec = 5;
 		end
@@ -1953,8 +2117,12 @@ function Lunar.Sphere:UpdateSphere()
 			end
 		end
 
+		if (valueMax <= 0) then
+			valueMax = 1;
+		end
+
 		if (checkTypeID == 1) then
-			local bubbleSize = math.floor(valueMax / 20)
+			local bubbleSize = math.max(math.floor(valueMax / 20), 1)
 			local currentBubble = currentValue - math.floor(currentValue / bubbleSize) * bubbleSize;
 --[[			local found, _, number1, number2 = string.find(tostring(currentBubble / bubbleSize), "(%d).(%d)")
 			if (number1 == nil) then
@@ -1986,12 +2154,15 @@ function Lunar.Sphere:UpdateSphere()
 --/script Lunar.API:Print(tostring(19110/21000*100));
 --/script Lunar.API:Print(string.format("%.1f%s", (0 / 21000 * 100), "%"));
 	elseif (checkType == LS_EVENT_AMMO) then
-		local slotID = GetInventorySlotInfo("AmmoSlot");
-		local ammoCount = GetInventoryItemCount("player", slotID);
-		if ((ammoCount == 1) and (not GetInventoryItemTexture("player", slotID))) then
-		    ammoCount = 0;
+		-- The ammo slot only exists on old clients
+		local ok, slotID = pcall(GetInventorySlotInfo, "AmmoSlot");
+		if (ok) and (slotID) then
+			local ammoCount = GetInventoryItemCount("player", slotID);
+			if ((ammoCount == 1) and (not GetInventoryItemTexture("player", slotID))) then
+			    ammoCount = 0;
+			end
+			sphereText = tostring(ammoCount);
 		end
-		sphereText = tostring(ammoCount);
 	end
 
 	-- Only update the text in the sphere if it is different (saves on memory usage)
@@ -2237,7 +2408,7 @@ function Lunar.Sphere.Events(self, event, arg1, arg2)
 			-- If the mana went down, update the mana tracking for the 5 second timer
 			if ((event == "UNIT_MANA") and (self.source == "player") and (dataTracking.powerType == 0) ) then
 				if (dataTracking.playerMana < UnitPower("player")) then
-					dataTracking.playerMana = UnitPower("player");
+					dataTracking.playerMana = Compat.Readable(UnitPower("player"), dataTracking.playerMana or 0);
 				end
 			end
 
@@ -2442,12 +2613,13 @@ function Lunar.Sphere.Events(self, event, arg1, arg2)
 		local stance = GetShapeshiftForm();
 		for index = 1, 130 do 
 			if (Lunar.Button:GetButtonType(index, stance, 1) == (90 + arg1)) then
+				local bagTexture = Lunar.Button:GetBagTexture(90 + arg1);
 				if (index > 10) then
-					SetPortraitToTexture(_G["LunarSub" .. index .. "ButtonIcon"], _G["CharacterBag" .. (arg1 - 1) .. "SlotIconTexture"]:GetTexture());
+					SetPortraitToTexture(_G["LunarSub" .. index .. "ButtonIcon"], bagTexture);
 					_G["LunarSub" .. index .. "ButtonIcon"]:SetVertexColor(1.0, 1.0, 1.0);
 					_G["LunarSub" .. index .. "ButtonIcon"]:SetAlpha(1);
 				else
-					SetPortraitToTexture(_G["LunarMenu" .. index .. "ButtonIcon"], _G["CharacterBag" .. (arg1 - 1) .. "SlotIconTexture"]:GetTexture());
+					SetPortraitToTexture(_G["LunarMenu" .. index .. "ButtonIcon"], bagTexture);
 					_G["LunarMenu" .. index .. "ButtonIcon"]:SetVertexColor(1.0, 1.0, 1.0);
 					_G["LunarMenu" .. index .. "ButtonIcon"]:SetAlpha(1);
 				end
@@ -2549,22 +2721,25 @@ function Lunar.Sphere.Events(self, event, arg1, arg2)
 		-- If we made the frame hidden in the past, make sure it's visible again
 		GossipFrame:SetAlpha(1);
 
-		-- If we're supposed to skip gossips, continue
-		if (LunarSphereSettings.skipGossip) then
+		-- If we're supposed to skip gossips, continue (never while holding shift, so the
+		-- player can still talk to the NPC)
+		if (LunarSphereSettings.skipGossip) and (not IsShiftKeyDown()) then
 
-			-- Grab the type of gossip we have. If it is a banker, battlemaster, taxi, or vendor,
-			-- we'll skip the gossip. Anything else, we'll leave be, since we might want to select a different option
-			local _, gossipType, _, moreGossip = C_GossipInfo.GetOptions()
+			-- If the NPC only offers a single banker, battlemaster, taxi, trainer or vendor
+			-- option, we'll skip the gossip. Anything else, we'll leave be, since we might want
+			-- to select a different option
+			local gossipOptionID = Compat.GetSkippableGossipOption();
 
-			if ((((gossipType == "banker") or (gossipType == "battlemaster") or (gossipType == "taxi") or (gossipType == "vendor")) and (not moreGossip)) or (gossipType == "trainer" and (not moreGossip))) then
+			if (gossipOptionID) then
 
-				-- Next, check to see if the vendor has quests. If they don't we continue
-				if (not GetGossipAvailableQuests() and not GetGossipActiveQuests()) then
+				-- Next, check to see if the NPC has quests. If they don't we continue
+				local availableQuests, activeQuests = Compat.GetGossipQuestCounts();
+				if ((availableQuests or 0) == 0) and ((activeQuests or 0) == 0) then
 
 					-- We set the frame's alpha to 0 so it never really appears to the user.
 					-- Then, select the option and we're off!
 					GossipFrame:SetAlpha(0);
-					SelectGossipOption(1);
+					C_GossipInfo.SelectOption(gossipOptionID);
 				end
 			end
 		end
@@ -2609,7 +2784,7 @@ function Lunar.Sphere.Events(self, event, arg1, arg2)
 		return;
 	end
 
-	if (event == "ACTIVE_TALENT_GROUP_CHANGED") then
+	if (event == "ACTIVE_TALENT_GROUP_CHANGED") or (event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED") then
 		if (LunarSphereSettings.enableTemplateHotswapping) then
 			Lunar.templateSwapTimer = 0;
 		end
@@ -2677,7 +2852,7 @@ function Lunar.Sphere.Updates(self, elapsed)
 			Lunar.Sphere:UpdateGauge("Inner");
 			Lunar.Sphere:UpdateGauge("Outer");
 			Lunar.Sphere:UpdateSphere();
-			dataTracking.playerMana = UnitPower("player");
+			dataTracking.playerMana = Compat.Readable(UnitPower("player"), dataTracking.playerMana or 0);
 
 --			Lunar.Button:UpdateCount(_G["LSmain"]);
 
@@ -2719,9 +2894,17 @@ function Lunar.Sphere.Updates(self, elapsed)
 
 	if (Lunar.templateSwapTimer) then
 		Lunar.templateSwapTimer = Lunar.templateSwapTimer + elapsed;
-		if (Lunar.templateSwapTimer >= 0.5) then
+		if (Lunar.templateSwapTimer >= 0.5) and InCombatLockdown() then
+			-- Our buttons are secure, wait until we're out of combat to rebuild them
+			Lunar.templateSwapTimer = 0;
+		elseif (Lunar.templateSwapTimer >= 0.5) then
 			Lunar.templateSwapTimer = nil;
 			local activeGroup = GetActiveSpecGroup();
+			-- Retail no longer has dual talent groups, the two template slots map to the
+			-- first and second specialization instead.
+			if (Compat.isMainline) and (C_SpecializationInfo) and (C_SpecializationInfo.GetSpecialization) then
+				activeGroup = C_SpecializationInfo.GetSpecialization() or activeGroup;
+			end
 			local loadIt;
 			if (LunarSphereSettings.dualTemplate1 and activeGroup == 1) then
 				LunarSphereSettings.loadTemplate = LunarSphereSettings.dualTemplate1

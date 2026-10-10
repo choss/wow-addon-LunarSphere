@@ -76,20 +76,24 @@ Lunar.API.debugTooltip = CreateFrame("GameTooltip", "LunarAPIDebugTooltip", UIPa
  
 Lunar.API.debugTooltipUpdater = CreateFrame("Frame", "LunarAPIDebugTooltipUpdater", UIParent, BackdropTemplateMixin and "BackdropTemplate");
 
-local GetSpellLink = GetSpellLink
-if C_Spell.GetSpellLink then
-	GetSpellLink = C_Spell.GetSpellLink
-end
-
-local BOOKTYPE_SPELL = BOOKTYPE_SPELL
-if Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player then
-	BOOKTYPE_SPELL = Enum.SpellBookSpellBank.Player
-end
-
-local GetItemInfo = GetItemInfo
-if C_Item.GetItemInfo then
-	GetItemInfo = C_Item.GetItemInfo
-end
+-- Client API compatibility (see moduleCompat.lua)
+local Compat = Lunar.Compat;
+local GetSpellLink = Compat.GetSpellLink;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetSpellSubtext = Compat.GetSpellSubtext;
+local GetNumSpellTabs = Compat.GetNumSpellTabs;
+local GetSpellTabInfo = Compat.GetSpellTabInfo;
+local GetItemInfo = Compat.GetItemInfo;
+local GetItemCount = Compat.GetItemCount;
+local GetNumAddOns = Compat.GetNumAddOns;
+local GetAddOnInfo = Compat.GetAddOnInfo;
+local EnableAddOn = Compat.EnableAddOn;
+local DisableAddOn = Compat.DisableAddOn;
+local IsAddOnLoadOnDemand = Compat.IsAddOnLoadOnDemand;
+local GetWatchedFactionInfo = Compat.GetWatchedFactionInfo;
+local GetMerchantItemInfo = Compat.GetMerchantItemInfo;
+local GetBonusBarOffset = Compat.GetBonusBarOffset;
+local BOOKTYPE_SPELL = Compat.BOOKTYPE_SPELL;
 
 -- List of functions that are OK
 -- * GetSpellBookItemName, C_SpellBook.GetSpellBookItemName
@@ -132,6 +136,10 @@ do
 		local return_type = return_type_db[original_fn]
 		local keys = key_db[return_type]
 
+		if (not original_fn) or (not keys) then
+			return function () return nil end
+		end
+
 		return function (...)
 			local tbl = original_fn(...)
 			if not tbl then
@@ -170,11 +178,7 @@ Lunar.API.debugTooltipUpdater:SetScript("OnUpdate", function(self, arg1)
 
 	if (Lunar.API.debugTooltipTimer > 0.3) then
 		Lunar.API.debugTooltipTimer = 0;
-		if GetMouseFocus then
-			Lunar.API.debugFrameOver = GetMouseFocus();
-		else
-			Lunar.API.debugFrameOver =  GetMouseFoci()[1]
-		end
+		Lunar.API.debugFrameOver = Compat.GetMouseFocus();
 		Lunar.API.debugTooltip:Hide();
 		if (IsControlKeyDown() and IsAltKeyDown() and Lunar.API.debugFrameOver) then
 			Lunar.API.debugTooltip:ClearLines();
@@ -561,6 +565,8 @@ function Lunar.API:GetSpellID(spellName)
 	-- spell that we're searching for, save the ID...
 	for index = 1, totalSpells do
 		scanName, scanRank = Lunar.API:GetSpellBookItemName(index, BOOKTYPE_SPELL);
+		scanName = scanName or "";
+		scanRank = scanRank or "";
 		if (string.lower(scanName) == filterName) then
 
 			spellID = index;
@@ -653,7 +659,7 @@ function Lunar.API:PrintMemoryStats()
 			name, _, _, enabled, loadable, _, _ = GetAddOnInfo(i);
 
 			-- If it's enabled ...
-			if (enabled == 1) then
+			if (enabled) then
 
 				-- Grab how much memory the addon uses. If it uses more than 0kb
 				-- of memory, we dump it into the list and update our counter.
@@ -722,7 +728,7 @@ function Lunar.API:GetMemoryTable()
 			name, _, _, enabled, loadable, _, _ = GetAddOnInfo(i);
 
 			-- If it's enabled ...
-			if (enabled == 1) then
+			if (enabled) then
 
 				-- Grab how much memory the addon uses. If it uses more than 0kb
 				-- of memory, we dump it into the list and update our counter.
@@ -792,7 +798,7 @@ function Lunar.API:ToggleActiveAddons(toggle)
 			-- addon to the saved addon list and turn it off. We will skip all
 			-- LunarSphere addons though, since those need to stay on.
 
-			if (enabled == 1) and (toggle ~= true) and not string.find(name, "LunarSphere") and not (IsAddOnLoadOnDemand(i)) then
+			if (enabled) and (toggle ~= true) and not string.find(name, "LunarSphere") and not (IsAddOnLoadOnDemand(i)) then
 				
 				table.insert(LunarSphereSettings.debugAddonList, name);
 				DisableAddOn(name);
@@ -802,7 +808,7 @@ function Lunar.API:ToggleActiveAddons(toggle)
 			-- saved addon list and see if this addon exists. If so, remove it from
 			-- the list and turn it on.
 
-			elseif (enabled ~= 1) and (toggle == true) then
+			elseif (not enabled) and (toggle == true) then
 
 				for index = 1, table.getn(LunarSphereSettings.debugAddonList) do
 					if (name == LunarSphereSettings.debugAddonList[index]) then
@@ -915,7 +921,20 @@ function Lunar.API:MultiAddToTooltip(actionType, actionName, index, firstLineApp
 		textContainerRight = _G[Lunar.Items.tooltip:GetName() .. "TextRight" .. textLine];
 		tipText = textContainer:GetText();
 		tipTextRight = textContainerRight:GetText();
-		if (textLine == 1) then
+
+		-- Tooltip lines can contain secret values while in combat on Midnight. We can't
+		-- inspect them, so add a placeholder line and hand the secret text to its
+		-- font string (FontString:SetText accepts secret values).
+		if Compat.AnySecret(tipText, tipTextRight) then
+			if (tipText) then
+				GameTooltip:AddLine(" ", 1, 1, 1, true);
+				local line = _G["GameTooltipTextLeft" .. GameTooltip:NumLines()];
+				if (line) then
+					line:SetText(tipText);
+				end
+			end
+			tipText = nil;
+		elseif (textLine == 1) then
 			tipText = tipText .. firstLineAppend;
 			if (spellID) then
 --				_, tipTextRight = GetSpellBookItemName(spellID, BOOKTYPE_SPELL);
@@ -925,6 +944,9 @@ function Lunar.API:MultiAddToTooltip(actionType, actionName, index, firstLineApp
 		end
 		if (tipText) then
 			r1,g1,b1 = textContainer:GetTextColor();
+			if Compat.AnySecret(r1, g1, b1) then
+				r1, g1, b1 = 1, 1, 1;
+			end
 			isYellow = (r1 > 0.8) and (g1 > 0.8) and (b1 < 0.2);
 			isGreen =  (g1 > 0.8) and (r1 < 0.2) and (b1 < 0.2);
 			showLine = true;
@@ -941,6 +963,9 @@ function Lunar.API:MultiAddToTooltip(actionType, actionName, index, firstLineApp
 			if (showLine) then
 				if (tipTextRight) then
 					r2,g2,b2 = textContainerRight:GetTextColor();
+					if Compat.AnySecret(r2, g2, b2) then
+						r2, g2, b2 = 1, 1, 1;
+					end
 					GameTooltip:AddDoubleLine(tipText, tipTextRight, r1, g1, b1, r2, g2, b2);
 				else
 					GameTooltip:AddLine(tipText, r1, g1, b1, true);
@@ -1013,293 +1038,152 @@ function Lunar.API:Load()
 			-- We have two options now. If the last purchase time was within the past 8 seconds,
 			-- and the last used vendor name is the same, we will end now to prevent auto-buying
 			-- the same reagents if they haven't entered the player's inventory yet)
-			if (Lunar.API.lastPurchaseTime) and (not UnitPlayerControlled("target") and (UnitName("target") == Lunar.API.lastVendorName))  then
+			local vendorName = Compat.Readable(UnitName("target"), nil);
+			if (Lunar.API.lastPurchaseTime) and (not UnitPlayerControlled("target")) and (vendorName ~= nil) and (vendorName == Lunar.API.lastVendorName) then
 				if (Lunar.API.lastPurchaseTime > (time() - 8)) then
 					return;
 				end
 			end
 			Lunar.API.lastPurchaseTime = time();
-			Lunar.API.lastVendorName = UnitName("target");
-
-			-- Set up our locals
-			local currentAmount, currentBuyAmount, restockCounter, itemIndex, reagentIndex, totalMerchItems;
-			local itemName, price, quantity, numAvailable;
-			local formattedReceipt, maxBuyAmount, itemLink, currentBag, currentSlot; --, currentBagSlots;
-
-			-- Grab how many items the merchant, bank or guild bank carries
-			if (Lunar.API.isBanker == true) then
-
-				-- Add the total bank slots and the bank bag slots. Also keep track of
-				-- where each bag starts, item slot wise
-				local bagID, slotCount;
-				totalMerchItems = NUM_BANKGENERIC_SLOTS;
-				Lunar.API.bankBagInfo = Lunar.API.bankBagInfo or {};
-				for bagID = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
-					Lunar.API.bankBagInfo[bagID - NUM_BAG_SLOTS] = Lunar.Items:GetContainerNumSlots(bagID);
-					totalMerchItems = totalMerchItems + Lunar.API.bankBagInfo[bagID - NUM_BAG_SLOTS];
-				end
-				currentBag = 1;
-				currentSlot = 1;
-
-			elseif (Lunar.API.isGuildBanker == true) then
-
-				totalMerchItems = MAX_GUILDBANK_SLOTS_PER_TAB * GetNumGuildBankTabs();
-				currentBag = 1;
-				currentSlot = 1;
-
-			else
-				totalMerchItems = GetMerchantNumItems();
-				
-				-- Calculate cost of all reagents the player would need to buy. If it's more than the 10g limit,
-				-- ask the player if they want to proceed. Unless they already accepted, in which case we continue.
-
-				-- code goes here
-			end
+			Lunar.API.lastVendorName = vendorName;
 
 			-- Reset the bill
-			formattedReceipt = 0;
+			local formattedReceipt = 0;
+			local reagentIndex, reagent, currentAmount, restockCounter;
 
-			-- Now, compare each reagent we're looking at buying with the current item of the merchant
-			for reagentIndex = 1, table.getn(LunarSphereSettings.reagentList) do
+			-- Bank restocking. The bank is made up of containers (bank tabs on modern clients,
+			-- the bank slots + bank bags on older ones). Grab what we need from them.
+			if (Lunar.API.isBanker == true) then
 
-				if (Lunar.API.isBanker) then
-					price = 1;
-					quantity = 1;
-					numAvailable = GetItemCount(LunarSphereSettings.reagentList[reagentIndex].name, true) - GetItemCount(LunarSphereSettings.reagentList[reagentIndex].name); --GetInventoryItemLink("player", currentSlot) or (""), true)
-				elseif (Lunar.API.isGuildBanker) then
-					price = 1;
-					quantity = 1;
-	--				numAvailable = GetItemCount(LunarSphereSettings.reagentList[reagentIndex].name, true) - GetItemCount(LunarSphereSettings.reagentList[reagentIndex].name); --GetInventoryItemLink("player", currentSlot) or (""), true)
-				end
+				local bankContainers = Compat.GetBankContainers();
+				local bagID, slotID, slotCount, info, itemName, moveAmount, freeBag, freeBagID;
 
-				-- Although it shouldn't happen if the reagent list is built properly, but
-				-- check and make sure that the table is proper, so we don't get errors.
-				if (LunarSphereSettings.reagentList[reagentIndex].maxAmount) then
+				for reagentIndex = 1, table.getn(LunarSphereSettings.reagentList) do
+					reagent = LunarSphereSettings.reagentList[reagentIndex];
+					if (reagent.maxAmount) and (reagent.name) then
 
-					-- Grab how many of the restock item that we have and set up a counter to buy
-					-- as many pieces we need.
-					currentAmount = GetItemCount(LunarSphereSettings.reagentList[reagentIndex].name) or 0;
+						currentAmount = GetItemCount(reagent.name) or 0;
+						restockCounter = reagent.maxAmount - currentAmount;
 
-				end
-
-				-- Cycle through each item in the vendor or bank window
-				for itemIndex = 1, totalMerchItems do
-
-					-- Grab the bank item's info
-					if (Lunar.API.isBanker == true) then
-
-						-- Bank item
-						if (itemIndex <= NUM_BANKGENERIC_SLOTS) then
-							currentSlot = BankButtonIDToInvSlotID(itemIndex);
-							itemName = GetItemInfo(GetInventoryItemLink("player", currentSlot) or (""));
-
-						-- Bank bag item
-						else
-
-							-- Make sure we start on the first slot when we start working with bags	
-							if (itemIndex == NUM_BANKGENERIC_SLOTS + 1) then
-								currentSlot = 1;
-								currentBag = 1;
+						for _, bagID in ipairs(bankContainers) do
+							if (restockCounter <= 0) then
+								break;
 							end
-
-							-- If we have an empty bag, find one that isn't empty
-							if (Lunar.API.bankBagInfo[currentBag] == 0) then
-								local bagID;
-								for bagID = currentBag, NUM_BANKBAGSLOTS do 
-									if (Lunar.API.bankBagInfo[bagID] ~= 0) then
-										currentBag = bagID;
-										currentSlot = 1;
-										break;
-									end
+							slotCount = C_Container.GetContainerNumSlots(bagID) or 0;
+							for slotID = 1, slotCount do
+								if (restockCounter <= 0) then
+									break;
 								end
-							end
+								info = C_Container.GetContainerItemInfo(bagID, slotID);
+								if (info) and (info.hyperlink) and (not info.isLocked) then
+									itemName = GetItemInfo(info.hyperlink);
+									if (itemName == reagent.name) then
 
-							-- Now, obtain an item in the current bag;
-							itemName = GetItemInfo(Lunar.Items:GetContainerItemLink(currentBag + NUM_BAG_SLOTS, currentSlot) or (""));
+										moveAmount = math.min(info.stackCount or 1, restockCounter);
 
-						end
-
-					-- Grab the guild bank item's info
-					elseif (Lunar.API.isGuildBanker == true) then
-
-						-- Bank item
-						_, numAvailable = GetGuildBankItemInfo(currentBag, currentSlot)
-						itemName = GetItemInfo(GetGuildBankItemLink(currentBag, currentSlot) or "");
-
-					-- Grab the current vendor item info
-					else
-						itemName, _, price, quantity, numAvailable = GetMerchantItemInfo(itemIndex);
-					end
-
-					-- If the names match, it's time to see if we buy it
-					if (itemName ~= nil and itemName ~= "" and itemName == LunarSphereSettings.reagentList[reagentIndex].name) then
-
-						-- Although it shouldn't happen if the reagent list is built properly, but
-						-- check and make sure that the table is proper, so we don't get errors.
-						if (LunarSphereSettings.reagentList[reagentIndex].maxAmount) then
-
-							-- Grab how many of the restock item that we have and set up a counter to buy
-							-- as many pieces we need.
-							-- no longer restricted to buy stack sizes :)	restockCounter = LunarSphereSettings.reagentList[reagentIndex].maxAmount - currentAmount;
-							restockCounter = LunarSphereSettings.reagentList[reagentIndex].maxAmount - currentAmount;
-
-							-- Reset the bill for the current item
-							-- formattedReceipt = 0; -- (Removed in favor of a "total" of all reagents receipt)
-
-							if (numAvailable > -1) then
-								if (restockCounter > numAvailable) then
-									restockCounter = numAvailable;
-								end
-							end
-
-							-- Grab how many of the item we can buy at once, or if it's a bank, grab at once
-							if (Lunar.API.isBanker) then
-								if (itemIndex <= NUM_BANKGENERIC_SLOTS) then
-									maxBuyAmount = GetInventoryItemCount("player", BankButtonIDToInvSlotID(itemIndex));
-								else
-									_, maxBuyAmount = Lunar.Items:GetContainerItemInfo(currentBag + NUM_BAG_SLOTS, currentSlot);
-								end
-							elseif (Lunar.API.isGuildBanker) then
-								maxBuyAmount = numAvailable;
-							else
-								maxBuyAmount = GetMerchantItemMaxStack(itemIndex);
-							end
-
-							if (restockCounter) then
-
-								-- Now, loop and buy the items.
-								while (restockCounter > 0) do
-
-									-- If we can buy more than one at once, go for it
-									if (maxBuyAmount > 1) or ((maxBuyAmount == 1) and (Lunar.API.isBanker)) or ((maxBuyAmount == 1) and (Lunar.API.isGuildBanker)) then
-
-										if (Lunar.API.isBanker == true) then
-
-											-- If we need less than the max amount we can grab, just grab
-											-- what we need and try to place it in a bag.
-											if (restockCounter <= maxBuyAmount) then
-
-												-- Find a home for the item
-												local bagIndex = nil;
-												local i;
-												for i = 0, 4 do
-													if (C_Container.GetContainerNumFreeSlots(i) > 0) then
-														bagIndex = i;
-														break;
-													end
-												end
-
-												-- If we have a home, continue
-												if (bagIndex) then
-														
-													-- From the bank	
-													if (itemIndex <= NUM_BANKGENERIC_SLOTS) then
-														C_Container.SplitContainerItem(BANK_CONTAINER, itemIndex, restockCounter); 
-
-													-- From a bank bag
-													else
-														C_Container.SplitContainerItem(currentBag + NUM_BAG_SLOTS, currentSlot, restockCounter);
-													end
-
-													if (bagIndex == 0) then
-														PutItemInBackpack()
-													else
-														PutItemInBag(19 + bagIndex)	
-													end
-
-													currentAmount = currentAmount + restockCounter;
-
-													formattedReceipt = formattedReceipt + ((price / quantity) * restockCounter);
-
-												end
-
-												restockCounter = 0
-
-											-- Otherwise, grab it all!
-											else
-
-												-- From the bank	
-												if (itemIndex <= NUM_BANKGENERIC_SLOTS) then
-													C_Container.UseContainerItem(BANK_CONTAINER, itemIndex);
-
-												-- From a bank bag
-												else
-													C_Container.UseContainerItem(currentBag + NUM_BAG_SLOTS, currentSlot);
-												end
-
-												restockCounter = 0 --restockCounter - maxBuyAmount
-												currentAmount = currentAmount + maxBuyAmount;
-												formattedReceipt = formattedReceipt + ((price / quantity) * maxBuyAmount);
-
-											end
-										elseif (Lunar.API.isGuildBanker) then
-
-											-- Make sure we can pull from this tab. if not, we skip to a new tab.
-											local _, _, _, _, _, remainingWithdrawls = GetGuildBankTabInfo(currentBag);
-											if (remainingWidthdrawls == 0) then
-												itemIndex = currentBag * MAX_GUILDBANK_SLOTS_PER_TAB;
-												currentBag = currentBag + 1;
-												currentSlot = 1;
-												break;
-											end
+										-- If we need the whole stack, just move it into our bags
+										if (moveAmount >= (info.stackCount or 1)) then
+											C_Container.UseContainerItem(bagID, slotID);
 										else
-										
-											-- If we need less than the max amount we can buy, just buy
-											-- what we need.
-											if (restockCounter <= maxBuyAmount) then
-												BuyMerchantItem(itemIndex, restockCounter)	
-												currentAmount = currentAmount + restockCounter;
-												formattedReceipt = formattedReceipt + ((price / quantity) * restockCounter);
-												restockCounter = 0
-
-											-- Otherwise, buy all of it and wait for the next loop to buy more
+											-- Otherwise split off what we need and drop it into a free bag slot
+											freeBag = nil;
+											for freeBagID = 0, (NUM_BAG_SLOTS or 4) do
+												if ((C_Container.GetContainerNumFreeSlots(freeBagID) or 0) > 0) then
+													freeBag = freeBagID;
+													break;
+												end
+											end
+											if (freeBag == nil) then
+												moveAmount = 0;
 											else
-												BuyMerchantItem(itemIndex, maxBuyAmount)
-												restockCounter = restockCounter - maxBuyAmount
-												currentAmount = currentAmount + maxBuyAmount;
-												formattedReceipt = formattedReceipt + ((price / quantity) * maxBuyAmount);
+												C_Container.SplitContainerItem(bagID, slotID, moveAmount);
+												if (freeBag == 0) then
+													PutItemInBackpack();
+												else
+													PutItemInBag(Compat.GetBagInventoryID(freeBag));
+												end
 											end
 										end
 
-									-- Otherwise, just buy one at a time *cry*
-									else
-										BuyMerchantItem(itemIndex, 1)
-										restockCounter = restockCounter - 1
-										currentAmount = currentAmount + 1;
-										formattedReceipt = formattedReceipt + price;
+										restockCounter = restockCounter - moveAmount;
+										formattedReceipt = formattedReceipt + moveAmount;
 									end
 								end
 							end
-
 						end
 					end
-
-					-- Next, check if we're done with this bank bag. If so, increase our bag ID. Otherwise, just
-					-- increase our slot ID
-					if (Lunar.API.isBanker == true) then
-						if (currentSlot == Lunar.API.bankBagInfo[currentBag]) then
-							currentSlot = 1;
-							currentBag = currentBag + 1;
-						else
-							currentSlot = currentSlot + 1;
-						end
-					end
-					
 				end
 
+			-- Merchant restocking
+			else
+				local totalMerchItems = GetMerchantNumItems() or 0;
+				local itemIndex, itemName, price, quantity, numAvailable, maxBuyAmount;
+
+				for reagentIndex = 1, table.getn(LunarSphereSettings.reagentList) do
+					reagent = LunarSphereSettings.reagentList[reagentIndex];
+
+					-- Although it shouldn't happen if the reagent list is built properly, but
+					-- check and make sure that the table is proper, so we don't get errors.
+					if (reagent.maxAmount) and (reagent.name) then
+
+						-- Grab how many of the restock item that we have
+						currentAmount = GetItemCount(reagent.name) or 0;
+
+						-- Cycle through each item in the vendor window
+						for itemIndex = 1, totalMerchItems do
+
+							itemName, _, price, quantity, numAvailable = GetMerchantItemInfo(itemIndex);
+
+							-- If the names match, it's time to see if we buy it
+							if (itemName ~= nil) and (itemName ~= "") and (itemName == reagent.name) then
+
+								price = price or 0;
+								quantity = math.max(quantity or 1, 1);
+								restockCounter = reagent.maxAmount - currentAmount;
+
+								if (numAvailable) and (numAvailable > -1) and (restockCounter > numAvailable) then
+									restockCounter = numAvailable;
+								end
+
+								-- Grab how many of the item we can buy at once
+								maxBuyAmount = math.max(GetMerchantItemMaxStack(itemIndex) or 1, 1);
+
+								-- Now, loop and buy the items.
+								while (restockCounter > 0) do
+									local buyAmount = math.min(restockCounter, maxBuyAmount);
+									BuyMerchantItem(itemIndex, buyAmount);
+									restockCounter = restockCounter - buyAmount;
+									currentAmount = currentAmount + buyAmount;
+									formattedReceipt = formattedReceipt + ((price / quantity) * buyAmount);
+								end
+							end
+						end
+					end
+				end
 			end
 
-		-- If there is a bill to print out, and we're supposed to print it out, do so now
+			-- If there is a bill to print out, and we're supposed to print it out, do so now
 			if (printBill) and (formattedReceipt > 0) then
 				if (Lunar.API.isBanker) then
 					Lunar.API:Print(LUNARSPHERE_CHAT .. Lunar.Locale["_REAGENT_BANKRESTOCK_TEXT"]);
 				else
-					Lunar.API:Print(LUNARSPHERE_CHAT .. Lunar.Locale["REAGENT_TOTALCOST_TEXT"] .. string.format("|c00D5B108 %2dg" , formattedReceipt / 10000) .. string.format("|c00C8C5C8 %2ds" , string.sub(formattedReceipt, -4) / 100)..string.format("|c00A3613D %2dc" , string.sub(formattedReceipt, -2)));
+					Lunar.API:Print(LUNARSPHERE_CHAT .. Lunar.Locale["REAGENT_TOTALCOST_TEXT"] .. Lunar.API:FormatMoney(formattedReceipt));
 				end
 			end
 		end
 	end
 
+	-- /***********************************************
+	--   FormatMoney
+	--
+	--   Formats an amount of copper into gold, silver and copper text
+	--  *********************/
+	function Lunar.API:FormatMoney(copper)
+		copper = math.floor(copper or 0);
+		return string.format("|c00D5B108 %2dg", math.floor(copper / 10000)) ..
+		       string.format("|c00C8C5C8 %2ds", math.floor(copper / 100) % 100) ..
+		       string.format("|c00A3613D %2dc", copper % 100);
+	end
 	if not (LunarSphereSettings.memoryDisableJunk) then
 
 		-- /***********************************************
@@ -1314,8 +1198,8 @@ function Lunar.API:Load()
 		function Lunar.API:SellJunkItems(keepNonEquip, keepAllArmor, keepAllWeapons, printReceipt)
 
 			-- If we call this function and all types of items to sell are not marked for sale,
-			-- or there is no merchant window open ... just leave. No one loves you.
-			if ((keepNonEquip) and (keepAllArmor) and (keepAllWeapons)) then -- or (GetMerchantNumItems() == 0)  then -- no longer needed?
+			-- just leave. No one loves you.
+			if ((keepNonEquip) and (keepAllArmor) and (keepAllWeapons)) then
 				return;
 			end
 
@@ -1324,19 +1208,17 @@ function Lunar.API:Load()
 			-- If it's been a second since the last attempt, continue
 			if (timeDelay > 1) then
 
-				-- Create our locals
-				local bagIndex, slotIndex, itemLink, itemString, itemRarity, repairCost, sellReceipt;
-				local armorType, weaponType, itemType, sellIt;
+				Lunar.API.lastSellTime = time();
 
-				-- Grab the localized armor and weapon types
-	--			weaponType, armorType = GetAuctionItemClasses()
-				weaponType, armorType = LSAUCCLASSES1, LSAUCCLASSES2;
-
-				-- Set our sell receipt to 0;
-				sellReceipt = 0;
+				-- Create our locals. We use the (locale independent) item class IDs to tell
+				-- weapons and armor apart from everything else.
+				local bagIndex, slotIndex, itemLink, itemRarity, sellPrice, classID, info, sellIt;
+				local WEAPON = (Enum.ItemClass and Enum.ItemClass.Weapon) or 2;
+				local ARMOR = (Enum.ItemClass and Enum.ItemClass.Armor) or 4;
+				local sellReceipt = 0;
 
 				-- Cycle through all our bags
-				for bagIndex = 0, 4 do
+				for bagIndex = 0, (NUM_BAG_SLOTS or 4) do
 
 					-- Cycle through all our slots in the bag
 					for slotIndex = 1, Lunar.Items:GetContainerNumSlots(bagIndex) do
@@ -1347,47 +1229,27 @@ function Lunar.API:Load()
 						-- If the item exists ...
 						if (itemLink) then
 
-							-- Grab the name of the item, and then grab its rarity and item
-							-- type. 
-							_,_,itemRarity,_,_,itemType = GetItemInfo(itemLink)
+							-- Grab the rarity, vendor price and class of the item
+							_, _, itemRarity, _, _, _, _, _, _, _, sellPrice, classID = GetItemInfo(itemLink);
 
-							-- If the item rarity is 0 (gray, junk), continue...	
-							if ( itemRarity == 0) then
-								-- Reset our sell trackers
-								Lunar.API.sellPrice = 0;
-								repairCost = nil;
+							-- If the item rarity is 0 (gray, junk) and can be sold, continue...
+							if (itemRarity == 0) and (sellPrice) and (sellPrice > 0) then
 
-								-- Add the item to our hidden tooltip and retrieve the repair
-								-- cost of the item, if it exists
-								_,repairCost = Lunar.API.moneyTracker:SetBagItem(bagIndex, slotIndex);
-
-								-- If there was a repair cost, subtract it from the sell price
-								-- that the tooltip calculated (we do this because the tooltip
-								-- added money for the sell price AND the repair price, so
-								-- we back out the repair cost to get the real sell price)
-								if (repairCost) and (repairCost > 0) then
-									Lunar.API.sellPrice = Lunar.API.sellPrice - repairCost;
+								if (classID == ARMOR) then
+									sellIt = not keepAllArmor;
+								elseif (classID == WEAPON) then
+									sellIt = not keepAllWeapons;
+								else
+									sellIt = not keepNonEquip;
 								end
 
-								-- If it's armor and we're selling armor, sell it and update the receipt
-								if ((itemType == armorType) and not (keepAllArmor))  then
-									C_Container.UseContainerItem(bagIndex, slotIndex);
-									sellReceipt = sellReceipt + Lunar.API.sellPrice;
+								if (sellIt) then
+									info = C_Container.GetContainerItemInfo(bagIndex, slotIndex);
+									if (info) and (not info.isLocked) then
+										C_Container.UseContainerItem(bagIndex, slotIndex);
+										sellReceipt = sellReceipt + sellPrice * (info.stackCount or 1);
+									end
 								end
-
-								-- If it's a weapon and we're selling weapons, sell it and update the receipt
-								if ((itemType == weaponType) and not (keepAllWeapons))  then
-									C_Container.UseContainerItem(bagIndex, slotIndex);
-									sellReceipt = sellReceipt + Lunar.API.sellPrice;
-								end
-
-								-- If it's not armor or a weapon, and we're selling non-equipment, sell it
-								-- and update the receipt
-								if ((not(itemType == armorType)) and (not(itemType == weaponType)) and not (keepNonEquip)) then
-									C_Container.UseContainerItem(bagIndex, slotIndex);
-									sellReceipt = sellReceipt + Lunar.API.sellPrice;
-								end
-
 							end
 						end
 					end
@@ -1395,18 +1257,11 @@ function Lunar.API:Load()
 
 				-- If we successfully sold something, we'll need to print the profit if the feature is turned on.
 				if (printReceipt) and (sellReceipt > 0)  then
-
-					-- Convert it into a formatted string (# gold, # silver, # copper)
-					sellReceipt = string.format("|c00D5B108 %2dg" , sellReceipt / 10000) .. string.format("|c00C8C5C8 %2ds" , string.sub(sellReceipt, -4) / 100)..string.format("|c00A3613D %2dc" , string.sub(sellReceipt, -2));
-
-					-- Print the results
-					Lunar.API:Print(LUNARSPHERE_CHAT .. Lunar.Locale["JUNK_SALE_TEXT"] .. sellReceipt);
-
+					Lunar.API:Print(LUNARSPHERE_CHAT .. Lunar.Locale["JUNK_SALE_TEXT"] .. Lunar.API:FormatMoney(sellReceipt));
 				end
 			end
 		end
 	end
-
 	if not (LunarSphereSettings.memoryDisableRepairs) then
 
 		-- /***********************************************
@@ -1446,7 +1301,7 @@ function Lunar.API:Load()
 
 					-- Guild Banks were added in patch 2.3.0. Hopefully Blizzard
 					-- will keep the API versioning consistent for BCC
-					if (Lunar.API:GetBuildInfo() >= 23000 and CanGuildBankRepair() and (LunarSphereSettings.useGuildFunds == true)) then
+					if (CanGuildBankRepair) and (IsInGuild()) and CanGuildBankRepair() and (LunarSphereSettings.useGuildFunds == true) then
 						-- Get our bank funds and withdraw max. 
 
 						local withdrawMax = GetGuildBankWithdrawMoney();
@@ -1467,7 +1322,7 @@ function Lunar.API:Load()
 						RepairAllItems();
 					end
 
-					formattedReceipt = string.format("|c00D5B108 %2dg" , repairAllCost / 10000) .. string.format("|c00C8C5C8 %2ds" , string.sub(repairAllCost, -4) / 100)..string.format("|c00A3613D %2dc" , string.sub(repairAllCost, -2));
+					formattedReceipt = Lunar.API:FormatMoney(repairAllCost);
 					if (guildFunds == true) then
 						formattedReceipt = formattedReceipt .. " " .. Lunar.Locale["_GUILD_FUNDS_TAG"];
 					end
@@ -1783,7 +1638,7 @@ function Lunar.API:Load()
 										elseif (index >= 5) and (index < 9) and (Lunar.API.getItemMail)  then
 											Lunar.API.nextMail = nil;
 											Lunar.API.eventWatcher:RegisterEvent("MAIL_INBOX_UPDATE");
-											TakeInboxItem(Lunar.API.totalMail);
+											AutoLootMailItem(Lunar.API.totalMail);
 											loopRunning = false;
 											Lunar.API.mailGrabbed = Lunar.API.mailGrabbed + 1;
 											break;
@@ -1791,7 +1646,7 @@ function Lunar.API:Load()
 											if (Lunar.API.getItemMail) and (hasItem) then
 												Lunar.API.nextMail = nil;
 												Lunar.API.eventWatcher:RegisterEvent("MAIL_INBOX_UPDATE");
-												TakeInboxItem(Lunar.API.totalMail);
+												AutoLootMailItem(Lunar.API.totalMail);
 												loopRunning = false;
 												Lunar.API.mailGrabbed = Lunar.API.mailGrabbed + 1;
 												break;
@@ -1821,8 +1676,11 @@ function Lunar.API:Load()
 						end
 
 						if (Lunar.API.mailGrabbed == Lunar.API.mailToGrab) then
-							-- Hide the mail minimap icon if there's no more mail
-							MiniMapMailFrame:Hide();
+							-- Hide the mail minimap icon if there's no more mail (only exists on
+							-- older clients, modern clients update the mail indicator themselves)
+							if (MiniMapMailFrame) then
+								MiniMapMailFrame:Hide();
+							end
 						end
 
 					end
@@ -1835,451 +1693,231 @@ function Lunar.API:Load()
 
 	if not (LunarSphereSettings.memoryDisableDefaultUI) then
 
-		function Lunar.API:HidePlayerFrame(toggle, loading)
-			Lunar.API:HideFrame(PlayerFrame, toggle, loading, false);
-			--[[
-			if (toggle) then
-				PlayerFrame:Hide();
+		-- Hidden holder frame. Blizzard frames we hide are re-parented to it instead of
+		-- replacing their Show() methods, which would taint them.
+		Lunar.API.uiHider = Lunar.API.uiHider or CreateFrame("Frame", "LunarSphereUIHider", UIParent);
+		Lunar.API.uiHider:Hide();
+		Lunar.API.hiddenFrames = Lunar.API.hiddenFrames or setmetatable({}, {__mode = "k"});
+
+		-- Runs a function once we're out of combat (or right now if we already are)
+		function Lunar.API:RunOutOfCombat(func, ...)
+			if not InCombatLockdown() then
+				func(...);
+				return;
+			end
+			if (not Lunar.API.combatQueueFrame) then
+				Lunar.API.combatQueueFrame = CreateFrame("Frame");
+				Lunar.API.combatQueueFrame.queue = {};
+				Lunar.API.combatQueueFrame:SetScript("OnEvent", function(self)
+					self:UnregisterEvent("PLAYER_REGEN_ENABLED");
+					local queue = self.queue;
+					self.queue = {};
+					for _, entry in ipairs(queue) do
+						entry.func(unpack(entry.args, 1, entry.argCount));
+					end
+				end);
+			end
+			table.insert(Lunar.API.combatQueueFrame.queue, {func = func, args = {...}, argCount = select("#", ...)});
+			Lunar.API.combatQueueFrame:RegisterEvent("PLAYER_REGEN_ENABLED");
+		end
+
+		local function SetFrameHidden(frame, hide)
+			if (not frame) then
+				return;
+			end
+			local objectType = frame.GetObjectType and frame:GetObjectType();
+			if (objectType == "Texture") or (objectType == "FontString") or (objectType == "MaskTexture") then
+				frame:SetAlpha(hide and 0 or 1);
+				return;
+			end
+			if (frame.IsProtected) and (frame:IsProtected()) and InCombatLockdown() then
+				Lunar.API:RunOutOfCombat(SetFrameHidden, frame, hide);
+				return;
+			end
+			if (hide) then
+				if (Lunar.API.hiddenFrames[frame] == nil) then
+					Lunar.API.hiddenFrames[frame] = frame:GetParent() or false;
+					frame:SetParent(Lunar.API.uiHider);
+				end
 			else
-				if (not loading) then
-					PlayerFrame:Show();
+				local parent = Lunar.API.hiddenFrames[frame];
+				if (parent ~= nil) then
+					Lunar.API.hiddenFrames[frame] = nil;
+					frame:SetParent(parent or UIParent);
 				end
 			end
-			--]]
+		end
+
+		-- /***********************************************
+		--   HideFrame
+		--
+		--   Hides (or restores) a Blizzard UI frame. On load we only ever hide, so that
+		--   frames the user never touched are left completely alone.
+		--  *********************/
+		function Lunar.API:HideFrame(frame, toggle, loading)
+			if (not frame) then
+				return;
+			end
+			if (toggle) then
+				SetFrameHidden(frame, true);
+			elseif (not loading) then
+				SetFrameHidden(frame, false);
+			end
+		end
+
+		-- Shortcut for hiding a list of frames that might not exist on this client
+		local function HideFrames(toggle, loading, ...)
+			for i = 1, select("#", ...) do
+				Lunar.API:HideFrame((select(i, ...)), toggle, loading);
+			end
+		end
+
+		function Lunar.API:HidePlayerFrame(toggle, loading)
+			HideFrames(toggle, loading, PlayerFrame);
 		end
 
 		function Lunar.API:HideCalendar(toggle, loading)
-			if (toggle) then
-				GameTimeFrame:Hide();
-			else
-				if (not loading) then
-					GameTimeFrame:Show();
-				end
-			end
+			HideFrames(toggle, loading, GameTimeFrame);
 		end
 
 		function Lunar.API:HideMinimapZoom(toggle, loading)
-			if (toggle) then
-				MinimapZoomIn:Hide();
-				MinimapZoomOut:Hide();
+			if (Minimap) and (Minimap.ZoomIn) then
+				HideFrames(toggle, loading, Minimap.ZoomIn, Minimap.ZoomOut, Minimap.ZoomHitArea);
 			else
-				if (not loading) then
-					MinimapZoomIn:Show();
-					MinimapZoomOut:Show();
-				end
+				HideFrames(toggle, loading, MinimapZoomIn, MinimapZoomOut);
 			end
 		end
 
+		-- The world map minimap button no longer exists on modern clients (Midnight / Forever)
 		function Lunar.API:HideWorldmap(toggle, loading)
-			if (toggle) then
-				MiniMapWorldMapButton:Hide();
-			else
-				if (not loading) then
-					MiniMapWorldMapButton:Show();
-				end
-			end
+			HideFrames(toggle, loading, MiniMapWorldMapButton);
 		end
 
 		function Lunar.API:HideMinimap(toggle, loading)
-			if (toggle) then
-				MinimapCluster:Hide();
-			else
-				if (not loading) then
-					MinimapCluster:Show();
-				end
-			end
+			HideFrames(toggle, loading, MinimapCluster);
 		end
 
 		function Lunar.API:HideTracking(toggle, loading)
-			if (toggle) then
-				MiniMapTracking:Hide();
+			if (MinimapCluster) and (MinimapCluster.Tracking) then
+				HideFrames(toggle, loading, MinimapCluster.Tracking);
 			else
-				if (not loading) then
-					MiniMapTracking:Show();
-				end
+				HideFrames(toggle, loading, MiniMapTracking);
 			end
 		end
 
 		function Lunar.API:HideMinimapTime(toggle, loading)
-			if (TimeManagerClockButton) then
-				if (toggle) then
-					TimeManagerClockButton:Hide();
-				else
-					if (not loading) then
-						TimeManagerClockButton:Show();
-					end
-				end
-			end
-		end
-
-		function Lunar.API:HideFrame(frame, toggle, loading, safeMode)
-
-			if (safeMode == true) then
-				if (toggle) then
-					RegisterStateDriver(frame, "visibility", "hide")
-				else
-					if (not loading) then
-						RegisterStateDriver(frame, "visibility", "show")
-					end
-				end
-			else
-				if (toggle) then
-					if (frame.GetScript)  then
-						if (not frame.eventLS) then
-							frame.eventLS = frame:GetScript("OnEvent");
-						end
-						frame:SetScript("OnEvent", Lunar.API.BlankFunction);
-					end
-					frame:Hide();
-					frame.showLS = frame.Show;
-					frame.Show = Lunar.API.BlankFunction;
-
-				else
-					if (not loading) then
-						if (frame.SetScript) then
-							frame:SetScript("OnEvent", frame.eventLS);
-						end
-						frame.Show = frame.showLS;
-						frame:Show();
-					end
-				end
-			end
+			HideFrames(toggle, loading, TimeManagerClockButton);
 		end
 
 		function Lunar.API:HideExpBars(toggle, loading)
-
-		--[[	if not _G["LSHideEXP"] then
-				local frame = CreateFrame("Frame", "LSHideEXP", UIParent, BackdropTemplateMixin and "BackdropTemplate, GameTooltipTemplate");
-
-				frame:SetPoint("Center");
-				MainMenuExpBar:SetParent(frame);
-				ReputationWatchBar:SetParent(frame);
-		--		MainMenuXPBarTexture0:SetParent(frame);
-		--		MainMenuXPBarTexture1:SetParent(frame);
-		--		MainMenuXPBarTexture2:SetParent(frame);
-		--		MainMenuXPBarTexture3:SetParent(frame);
-			end
-
-			Lunar.API:HideFrame(_G["LSHideEXP"], toggle, loading);
-		--]]
-			if (toggle) then
-				Lunar.API:HideFrame(MainMenuExpBar, toggle, loading);
-				Lunar.API:HideFrame(ReputationWatchBar, toggle, loading);
-				Lunar.API:HideFrame(MainMenuBarMaxLevelBar, toggle, loading);
-				Lunar.API:HideFrame(ExhaustionTick, toggle, loading);				
+			if (StatusTrackingBarManager) then
+				HideFrames(toggle, loading, StatusTrackingBarManager, MainStatusTrackingBarContainer, SecondaryStatusTrackingBarContainer);
 			else
-				if (not loading) then
-					Lunar.API:HideFrame(MainMenuExpBar, toggle, loading);
-					Lunar.API:HideFrame(ReputationWatchBar, toggle, loading);
-					Lunar.API:HideFrame(MainMenuBarMaxLevelBar, toggle, loading);
-					Lunar.API:HideFrame(ExhaustionTick, toggle, loading);				
-					if not (GetWatchedFactionInfo()) then
-						MainMenuBarMaxLevelBar:Show();
-					end
-					if (UnitLevel("player") == MAX_PLAYER_LEVEL) then
-						MainMenuExpBar:Hide();
-					else
-						MainMenuBarMaxLevelBar:Hide();
-					end
-
-					if (GetWatchedFactionInfo()) then
-						ReputationWatchBar_Update();
-		--				Lunar.API:HideFrame(ReputationWatchBar, toggle, loading);
-					else
-						ReputationWatchBar:Hide();	
-		--				Lunar.API:HideFrame(ReputationWatchBar, false, loading);
-					end
-					if not (GetXPExhaustion()) then
-						ExhaustionTick:Hide();
-					end
-				end
+				HideFrames(toggle, loading, MainMenuExpBar, ReputationWatchBar, MainMenuBarMaxLevelBar, ExhaustionTick);
 			end
+		end
 
+		local function GetMainActionBar()
+			return MainActionBar or MainMenuBar;
 		end
 
 		function Lunar.API:HideGryphons(toggle, loading)
-
-			if (toggle) then
-				MainMenuBarLeftEndCap:Hide();
-				MainMenuBarRightEndCap:Hide();
+			local bar = GetMainActionBar();
+			if (bar) and (bar.EndCaps) then
+				HideFrames(toggle, loading, bar.EndCaps);
 			else
-				if (not loading) then
-					MainMenuBarLeftEndCap:Show();
-					MainMenuBarRightEndCap:Show();
-				end
+				HideFrames(toggle, loading, MainMenuBarLeftEndCap, MainMenuBarRightEndCap);
 			end
 		end
 
 		function Lunar.API:HideMenus(toggle, loading)
-
-		--[[	if not _G["LSHideMenus"] then
-				local frame = CreateFrame("Frame", "LSHideMenus", UIParent, BackdropTemplateMixin and "BackdropTemplate, GameTooltipTemplate");
-
-				frame:SetPoint("Center");
-				frame:SetFrameLevel(MainMenuBar:GetFrameLevel() + 1);
-				CharacterMicroButton:SetParent(frame);
-				SpellbookMicroButton:SetParent(frame);
-				TalentMicroButton:SetParent(frame);
-				QuestLogMicroButton:SetParent(frame);
-				SocialsMicroButton:SetParent(frame);
-				LFGMicroButton:SetParent(frame);
-				MainMenuMicroButton:SetParent(frame);
-				HelpMicroButton:SetParent(frame);
+			if (MicroMenuContainer) then
+				HideFrames(toggle, loading, MicroMenuContainer);
+			elseif (MicroMenu) then
+				HideFrames(toggle, loading, MicroMenu);
+			else
+				HideFrames(toggle, loading, CharacterMicroButton, SpellbookMicroButton, TalentMicroButton, AchievementMicroButton,
+					QuestLogMicroButton, GuildMicroButton, LFDMicroButton, EJMicroButton, MainMenuMicroButton, StoreMicroButton,
+					CollectionsMicroButton, HelpMicroButton);
 			end
-
-			Lunar.API:HideFrame(_G["LSHideMenus"], toggle, loading);
-	--]]
-			Lunar.API:HideFrame(CharacterMicroButton, toggle, loading);
-			Lunar.API:HideFrame(SpellbookMicroButton, toggle, loading);
-			Lunar.API:HideFrame(TalentMicroButton, toggle, loading);
-			Lunar.API:HideFrame(AchievementMicroButton, toggle, loading);
-			Lunar.API:HideFrame(QuestLogMicroButton, toggle, loading);
-			Lunar.API:HideFrame(GuildMicroButton, toggle, loading);
-			Lunar.API:HideFrame(LFDMicroButton, toggle, loading);
-			Lunar.API:HideFrame(EJMicroButton, toggle, loading);
-			Lunar.API:HideFrame(MainMenuMicroButton, toggle, loading);
-			Lunar.API:HideFrame(StoreMicroButton, toggle, loading);
-			Lunar.API:HideFrame(CollectionsMicroButton, toggle, loading);
-	--		Lunar.API:HideFrame(HelpMicroButton, toggle, loading);
 		end
 
 		function Lunar.API:HideBags(toggle, loading)
-
-		--[[	if not _G["LSHideBags"] then
-				local frame = CreateFrame("Frame", "LSHideBags", UIParent, BackdropTemplateMixin and "BackdropTemplate, GameTooltipTemplate");
-
-				frame:SetPoint("Center");
-				frame:SetFrameLevel(MainMenuBar:GetFrameLevel() + 1);
-				MainMenuBarBackpackButton:SetParent(frame);
-				CharacterBag0Slot:SetParent(frame);
-				CharacterBag1Slot:SetParent(frame);
-				CharacterBag2Slot:SetParent(frame);
-				CharacterBag3Slot:SetParent(frame);
-				KeyRingButton:SetParent(frame);
-				MainMenuBarPerformanceBarFrame:SetParent(frame);
+			if (BagsBar) then
+				HideFrames(toggle, loading, BagsBar);
+			else
+				HideFrames(toggle, loading, MainMenuBarBackpackButton, CharacterBag0Slot, CharacterBag1Slot, CharacterBag2Slot, CharacterBag3Slot);
 			end
-
-			Lunar.API:HideFrame(_G["LSHideBags"], toggle, loading);
-	--]]
-			Lunar.API:HideFrame(MainMenuBarBackpackButton, toggle, loading);
-			Lunar.API:HideFrame(CharacterBag0Slot, toggle, loading);
-			Lunar.API:HideFrame(CharacterBag1Slot, toggle, loading);
-			Lunar.API:HideFrame(CharacterBag2Slot, toggle, loading);
-			Lunar.API:HideFrame(CharacterBag3Slot, toggle, loading);
-	--		Lunar.API:HideFrame(KeyRingButton, toggle, loading);
-	--		Lunar.API:HideFrame(MainMenuBarPerformanceBarFrame, toggle, loading);
-
 		end
 
 		function Lunar.API:HideBottomBar(toggle, loading)
-
-		--[[	if not _G["LSHideBottomArt"] then
-				local frame = CreateFrame("Frame", "LSHideBottomArt", UIParent, BackdropTemplateMixin and "BackdropTemplate, GameTooltipTemplate");
-
-				frame:SetPoint("Center");
-				frame:SetFrameLevel(MainMenuBar:GetFrameLevel());
-				MainMenuBarTexture0:SetParent(frame);
-				MainMenuBarTexture1:SetParent(frame);
-				MainMenuBarTexture2:SetParent(frame);
-				MainMenuBarTexture3:SetParent(frame);
-				BonusActionBarTexture0:SetParent(frame);
-				BonusActionBarTexture1:SetParent(frame);
-			end
-
-			Lunar.API:HideFrame(_G["LSHideBottomArt"], toggle, loading);
-		--		MainMenuBar:EnableMouse(false);
-
-			if (toggle) then
-				MainMenuBar:EnableMouse(false);
+			local bar = GetMainActionBar();
+			if (bar) and (bar.BorderArt) then
+				HideFrames(toggle, loading, bar.BorderArt, bar.Background, bar.ActionBarPageNumber);
 			else
-				if (not loading) then
-					MainMenuBar:EnableMouse(true);
-				end
+				HideFrames(toggle, loading, MainMenuBarTexture0, MainMenuBarTexture1, MainMenuBarTexture2, MainMenuBarTexture3,
+					SlidingActionBarTexture0, SlidingActionBarTexture1, MainMenuBarPageNumber);
 			end
-		--]]
-
-			if (toggle) then
-				MainMenuBar:EnableMouse(false);
-			else
-				if (not loading) then
-					MainMenuBar:EnableMouse(true);
-				end
-			end
-
-			Lunar.API:HideFrame(MainMenuBarTexture0, toggle, loading); --, true);
-			Lunar.API:HideFrame(MainMenuBarTexture1, toggle, loading); --, true);
-			Lunar.API:HideFrame(MainMenuBarTexture2, toggle, loading); --, true);
-			Lunar.API:HideFrame(MainMenuBarTexture3, toggle, loading); --, true);
-	--		Lunar.API:HideFrame(BonusActionBarTexture0, toggle, loading);
-	--		Lunar.API:HideFrame(BonusActionBarTexture1, toggle, loading);
-			Lunar.API:HideFrame(SlidingActionBarTexture0, toggle, loading); --, true);
-			Lunar.API:HideFrame(SlidingActionBarTexture1, toggle, loading); --, true);
-			Lunar.API:HideFrame(MainMenuBarPageNumber, toggle, loading); --, true);
-	--		Lunar.API:HideFrame(VehicleMenuBarArtFrame, toggle, loading);
-
 		end
 
 		function Lunar.API:HideStanceBar(toggle, loading)
-			if (toggle) then
-				RegisterStateDriver(StanceBarFrame, "visibility", "hide")
-			else
-				if not loading then
-					RegisterStateDriver(StanceBarFrame, "visibility", "show")
-	--				securecall(StanceBarFrame_Update);
-				end	
-			end
+			HideFrames(toggle, loading, StanceBar or StanceBarFrame);
 		end
 
 		function Lunar.API:HideTotemBar(toggle, loading)
-			if (toggle) then
-				RegisterStateDriver(MultiCastActionBarFrame, "visibility", "hide")
-			else
-				if not loading then
-					RegisterStateDriver(MultiCastActionBarFrame, "visibility", "")
-					if (select(2, UnitClass("player")) == "SHAMAN") then
-	--					RegisterStateDriver(MultiCastActionBarFrame, "visibility", "show")
-						MultiCastActionBarFrame_Update(MultiCastActionBarFrame);
-					end
-				end	
-			end
+			HideFrames(toggle, loading, MultiCastActionBarFrame);
 		end
 
 		function Lunar.API:HidePetBar(toggle, loading)
-			if (toggle) then
-	--			Lunar.API:HideFrame(PetActionBarFrame, toggle, loading);
-				RegisterStateDriver(PetActionBarFrame, "visibility", "hide")
-	--			HidePetActionBar();
-			else
-				if not loading then
-	--				Lunar.API:HideFrame(PetActionBarFrame, toggle, loading);
-	--				ShowPetActionBar();
-	--				RegisterStateDriver(PetActionBarFrame, "visibility", "");
-	--				UnregisterStateDriver(PetActionBarFrame, "visibility", "hide");
-					RegisterStateDriver(PetActionBarFrame, "visibility", "[pet] show; hide");
-	--				if not (PetHasActionBar()) then
-	--					HidePetActionBar();
-	--					PetActionBarFrame:Hide();
-	--				end
-	--				PetActionBar_Update();
-				end	
-			end
-		end
-
-	--	function Lunar.API.HideBonusBarFunc()
-	--		BonusActionBarFrame.mode = "show";
-	--		BonusActionBarFrame.state == "top"
-	---		securecall(HideBonusActionBar)
-	--	end
-
-		function Lunar.API.ShowHideActionButtonGridFunc()
-
-			if (Lunar.API.HideActionButtonGridActive) then
-				return;
-			end
-
-			if (Lunar.API.ShowHideActionButtonGridFuncActive) then
-				return;
-			end
-
-			Lunar.API.ShowHideActionButtonGridFuncActive = true;
-			
-			local index;
-			for index = 1, 12 do
-	--			RegisterStateDriver(_G["ActionButton" .. index], "visibility", "hide")
-			end
-
-			Lunar.API.ShowHideActionButtonGridFuncActive = nil;
-		end
-
-		function Lunar.API.ShowHideBonusBarFunc()
-	--		BonusActionBarFrame.slideTimer = nil;
-	--		BonusActionBarFrame.completed = nil;
-			if (Lunar.API.ShowHideBonusBarFuncActive) then
-				return;
-			end
-
-			Lunar.API.ShowHideBonusBarFuncActive = true;
-
-			if (GetBonusBarOffset() > 0) then
-	--			securecall(HideBonusActionBar);
-				securecall(ShowBonusActionBar);
-	--			BonusActionBarFrame.mode = "show";
-			else
-	--			securecall(ShowBonusActionBar);
-				securecall(HideBonusActionBar);
-	--			BonusActionBarFrame.mode = "hide";
-			end
-
-			Lunar.API.ShowHideBonusBarFuncActive = nil;
+			HideFrames(toggle, loading, PetActionBar or PetActionBarFrame);
 		end
 
 		function Lunar.API:HideActionButtons(toggle, loading)
-
-			Lunar.API:HideFrame(ActionBarUpButton, toggle, loading);
-			Lunar.API:HideFrame(ActionBarDownButton, toggle, loading);
-
-			if (toggle) then
-				Lunar.API.ShowHideBonusBarFuncActive = nil;
-				Lunar.API.HideActionButtonGridActive = true;
-				Lunar.API.ShowHideActionButtonGridFuncActive = nil;
-	--			hooksecurefunc('HideBonusActionBar', Lunar.API.ShowHideBonusBarFunc)
-	--			hooksecurefunc('SpellButton_OnDrag', Lunar.API.ShowHideActionButtonGridFunc)
-	--			RegisterStateDriver(BonusActionBarFrame, "visibility", "[bonusbar:5]show; hide")
-				RegisterStateDriver(PossessBarFrame, "visibility", "[bonusbar:5]show; hide")
+			local bar = GetMainActionBar();
+			if (MainActionBar) or (bar and bar.EditModeInitialize) then
+				-- Modern clients: the main action bar is a single Edit Mode frame
+				HideFrames(toggle, loading, bar);
 			else
-				Lunar.API.HideActionButtonGridActive = nil;
-				if (not loading) then
-					Lunar.API.ShowHideBonusBarFuncActive = true;
-					if ((select(2, UnitClass("player"))) == "WARRIOR") then
-						RegisterStateDriver(BonusActionBarFrame, "visibility", "show")
-						securecall(ShowBonusActionBar);
-					else
-						if (GetBonusBarOffset() > 0) then
-							securecall(HideBonusActionBar);
-							securecall(ShowBonusActionBar);
-							RegisterStateDriver(BonusActionBarFrame, "visibility", "show")
-	--					else
-	--						RegisterStateDriver(BonusActionBarFrame, "visibility", "show")
-	--						securecall(HideBonusActionBar);
-						end	
-					end
-	--				RegisterStateDriver(BonusActionBarFrame, "visibility", "")
-	--				UnregisterStateDriver(BonusActionBarFrame, "visibility")
-					UnregisterStateDriver(PossessBarFrame, "visibility")
+				local index;
+				for index = 1, 12 do
+					HideFrames(toggle, loading, _G["ActionButton" .. index]);
 				end
+				HideFrames(toggle, loading, ActionBarUpButton, ActionBarDownButton);
 			end
-
-			local index, button;
-			for index = 1, 12 do
-				if (not toggle) and (not loading) then
-	--				RegisterStateDriver(_G["ActionButton" .. index], "visibility", "show")
-					RegisterStateDriver(_G["ActionButton" .. index], "visibility", "")
-					_G["ActionButton" .. index]:SetAttribute("statehidden", nil);
-				elseif (toggle) then
-					RegisterStateDriver(_G["ActionButton" .. index], "visibility", "hide")
-					_G["ActionButton" .. index]:SetAttribute("statehidden", true);
-				end
-	--			Lunar.API:HideFrame(_G["ActionButton" .. index], toggle, loading);
-			end
-
-			-- Simple hack to make sure the icons are updated properly when we hide or unhide
-			-- the action bars :)
-			securecall(ActionBar_PageUp);
-			securecall(ActionBar_PageDown);
-
 		end
 	end
-
 	if not (LunarSphereSettings.memoryDisableMinimap) then
 
 		function Lunar.API:SetMinimapScroll(toggle)
 			LunarSphereSettings.minimapScroll = toggle;
+
+			-- Modern clients already zoom the minimap with the mouse wheel. We only add our own
+			-- handler if the minimap doesn't have one, and only touch the minimap when the
+			-- option is actually turned on (or when undoing our own change).
 			if (toggle == true) then
-				Minimap:EnableMouseWheel(true);
-				Minimap:SetScript("OnMouseWheel", function (self, arg1) if (arg1 == 1) then Minimap_ZoomIn() else Minimap_ZoomOut() end end);
+				if (not Minimap:GetScript("OnMouseWheel")) then
+					Lunar.API.minimapWheelHooked = true;
+					Minimap:SetScript("OnMouseWheel", function (self, delta)
+						if (delta > 0) then
+							Minimap_ZoomIn();
+						else
+							Minimap_ZoomOut();
+						end
+					end);
+				end
+				if (Minimap.IsMouseWheelEnabled) and (not Minimap:IsMouseWheelEnabled()) then
+					Lunar.API.minimapWheelEnabled = true;
+					Minimap:EnableMouseWheel(true);
+				end
 			else
-				Minimap:EnableMouseWheel(false);
-				Minimap:SetScript("OnMouseWheel", Lunar.API.BlankFunction);
+				if (Lunar.API.minimapWheelHooked) then
+					Lunar.API.minimapWheelHooked = nil;
+					Minimap:SetScript("OnMouseWheel", nil);
+				end
+				if (Lunar.API.minimapWheelEnabled) then
+					Lunar.API.minimapWheelEnabled = nil;
+					Minimap:EnableMouseWheel(false);
+				end
 			end
 		end
 
@@ -2365,8 +2003,9 @@ function Lunar.API:Load()
 			Lunar.API.MinimapTextUpdater = CreateFrame("Frame", "LSMinimapTextUpdater", UIParent, BackdropTemplateMixin and "BackdropTemplate");
 
 			Lunar.API.MinimapTextUpdater:Show();
-			Lunar.API.MinimapTextUpdater:SetPoint("TopLeft", MinimapZoneTextButton, "TopLeft");
-			Lunar.API.MinimapTextUpdater:SetPoint("BottomRight", MinimapZoneTextButton, "BottomRight");
+			local zoneTextButton = MinimapZoneTextButton or (MinimapCluster and MinimapCluster.ZoneTextButton) or Minimap;
+			Lunar.API.MinimapTextUpdater:SetPoint("TopLeft", zoneTextButton, "TopLeft");
+			Lunar.API.MinimapTextUpdater:SetPoint("BottomRight", zoneTextButton, "BottomRight");
 			Lunar.API.MinimapTextUpdater:EnableMouse(false);
 
 			-- Create the updating function (frame updates every 1/3 of a second)
@@ -2421,14 +2060,12 @@ function Lunar.API:Load()
 
 				-- If we need to update the coordinates, do so
 				if (Lunar.API.minimapShowCoords) then
-					local x, y = GetPlayerMapPosition("player")
-					if (x == 0) and (y == 0) then
-						if (IsInInstance() == nil) or (select(2, IsInInstance()) == "pvp") then
-	--						SetMapToCurrentZone();
-						end
+					local x, y = Compat.GetPlayerMapPosition();
+					if Compat.AnySecret(x, y) then
+						Lunar.API.MinimapTextRight:SetText("");
+					else
+						Lunar.API.MinimapTextRight:SetText(tostring(math.floor(x * 1000) / 10) .. ",  " .. tostring(math.floor(y * 1000) / 10));
 					end
-					--SetMapToCurrentZone()
-					Lunar.API.MinimapTextRight:SetText(tostring(math.floor(x * 1000) / 10) .. ",  " .. tostring(math.floor(y * 1000) / 10));
 				end
 
 			 end);
@@ -2777,28 +2414,19 @@ function Lunar.API:GetItemCooldown(itemData)
 	-- grab the item ID and return the cooldown from it. Pain in the
 	-- ass, but the way we need to do it currently.
 
+	if (itemData == nil) or (itemData == "") then
+		return 0, 0, 0;
+	end
+
 	local _, itemLink = GetItemInfo(itemData);
 
 	local itemID = Lunar.API:GetItemID(itemLink)
 
 	if (itemID) then
-		return C_Container.GetItemCooldown(itemID);
+		return Compat.GetItemCooldown(itemID);
 	end
 
 	return 0, 0, 0;
-end
-
-if not AchievementMicroButton_Update then
-	function AchievementMicroButton_Update()
-		if ( not CanShowAchievementUI() ) then
-			AchievementMicroButton:Hide();
-			QuestLogMicroButton:SetPoint("BOTTOMLEFT", AchievementMicroButton, "BOTTOMLEFT", 0, 0);
-		else
-			AchievementMicroButton:Show();
-			QuestLogMicroButton:SetPoint("BOTTOMLEFT", AchievementMicroButton, "BOTTOMRIGHT", -3, 0);
-		end
-	end
---	AchievementMicroButton_Update = Lunar.API.BlankFunction;
 end
 
 --end
@@ -2922,43 +2550,30 @@ end
 
 --
 -- Lunar.API:IsVersionRetail()
--- 
--- Returns `true` if the current `Interface` is over `70000` (BfA interface version).
 --
--- Returns :
---   true - Client is Retail
---   false - Client is BCC, WotLKC or Classic
+-- Returns `true` on clients that use the modern (Mainline) API. That includes
+-- Midnight and WoW: Forever (which reports a 1.6x interface number, but runs the
+-- modern client).
 --
 function Lunar.API:IsVersionRetail()
-	local _, _, _, t = GetBuildInfo();
-    return (t > 70000);
+	return Lunar.Compat.isModern;
 end
 
 -- Lunar.API:IsVersionClassicEra()
--- 
--- Returns `true` if the current `Interface` is under `20000`.
 --
--- Returns :
---   true - Client is Classic
---   false - Client is Retail, BCC, or WotLKC.
+-- Returns `true` on the Classic Era (Vanilla) clients.
 --
 function Lunar.API:IsVersionClassicEra()
-	local _, _, _, t = GetBuildInfo();
-    return (t < 20000);
+	return Lunar.Compat.isClassicEra;
 end
 
 --
 -- Lunar.API:IsVersionClassic()
--- 
--- Returns `true` if the current `Interface` is `> 20000` and `< 70000`.
 --
--- Returns :
---   true - Client is Retail
---   false - Client is BCC, WotLKC or Classic
+-- Returns `true` on the progression Classic clients (TBC, Wrath, Cata, Mists...).
 --
 function Lunar.API:IsVersionClassic()
-	local _, _, _, t = GetBuildInfo();
-    return (t > 20000) and (t < 70000);
+	return Lunar.Compat.isClassic;
 end
 
 -- Lunar.API:GetBuildInfo()
@@ -2972,7 +2587,6 @@ function Lunar.API:GetBuildInfo()
 	local _, _, _, t = GetBuildInfo();
     return t;
 end
-
 if ( Lunar.API:IsVersionClassicEra() ) then
 
 ------------------------------------------------------------------------------
@@ -3086,23 +2700,14 @@ else
 	end
 
 	function Lunar.API:GetSpellName(spellIdentifier)
+		if (spellIdentifier == nil) or (spellIdentifier == "") then
+			return nil;
+		end
 		return C_Spell.GetSpellName(spellIdentifier), nil
 	end
 end
 
-if Enum.SpellBookSpellBank then
-	function Lunar.API:GetSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank)
-		-- "default" value if we were called with a single argument (Classic or Classic era API)
-		spellBookItemSpellBank = spellBookItemSpellBank or "spell"
-		if spellBookItemSpellBank == "spell" then
-			spellBookItemSpellBank = Enum.SpellBookSpellBank.Player
-		elseif spellBookItemSpellBank == "pet" then
-			spellBookItemSpellBank = Enum.SpellBookSpellBank.Pet
-		end
-		return C_SpellBook.GetSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank)
-	end
-else
-	function Lunar.API:GetSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank)
-		return GetSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank)
-	end
+-- Accepts a spell book slot index (and spell bank), or a spell name / ID.
+function Lunar.API:GetSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank)
+	return Lunar.Compat.GetSpellBookItemName(spellBookItemSlotIndex, spellBookItemSpellBank);
 end

@@ -24,7 +24,7 @@ Lunar.Template.version = 1.52;
 -- Create our template database
 Lunar.Template.template = {};
 
-function mergeSettings(destination, ...)
+local function mergeSettings(destination, ...)
 	local source;
 
 	for i = 1, select("#", ...) do
@@ -37,40 +37,17 @@ function mergeSettings(destination, ...)
 	return destination;
 end
 
-GetNumSpellTabs = GetNumSpellTabs
-if C_SpellBook.GetNumSpellBookSkillLines then
-	GetNumSpellTabs = C_SpellBook.GetNumSpellBookSkillLines
-end
-
-GetSpellTabInfo = GetSpellTabInfo
-if C_SpellBook.GetSpellBookSkillLineInfo then
-	GetSpellTabInfo = C_SpellBook.GetSpellBookSkillLineInfo
-end
-
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
-end
-
-local GetSpellBookItemInfo = GetSpellBookItemInfo
-if C_SpellBook.GetSpellBookItemInfo then
-	GetSpellBookItemInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellBookItemInfo)
-end
-
-local IsUsableSpell = IsUsableSpell;
-if C_Spell.IsSpellUsable then
-	IsUsableSpell = C_Spell.IsSpellUsable
-end
-
-local GetSpellTexture = GetSpellTexture
-if C_Spell.GetSpellTexture then
-	GetSpellTexture = C_Spell.GetSpellTexture
-end
-
-local BOOKTYPE_SPELL = BOOKTYPE_SPELL
-if Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player then
-	BOOKTYPE_SPELL = Enum.SpellBookSpellBank.Player
-end
+-- Client API compatibility (see moduleCompat.lua). These used to overwrite the global
+-- GetNumSpellTabs / GetSpellTabInfo, which could break other add-ons.
+local Compat = Lunar.Compat;
+local GetNumSpellTabs = Compat.GetNumSpellTabs;
+local GetSpellTabInfo = Compat.GetSpellTabInfo;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetSpellBookItemInfo = Compat.GetSpellBookItemInfo;
+local IsUsableSpell = Compat.IsUsableSpell;
+local GetSpellTexture = Compat.GetSpellTexture;
+local GetItemInfo = Compat.GetItemInfo;
+local BOOKTYPE_SPELL = Compat.BOOKTYPE_SPELL;
 
 local defaultSphereTemplateSettings =
 {
@@ -5932,7 +5909,7 @@ function Lunar.Template:LoadTemplateData()
 
 end
 
-function dump(o)
+local function dump(o)
 	if type(o) == 'table' then
 	   local s = '{ '
 	   for k,v in pairs(o) do
@@ -6171,9 +6148,9 @@ function Lunar.Template:ParseTemplateData()
 												rankFound = 0;
 												for i = 1, totalSpells do
 													scanName, scanRank = Lunar.API:GetSpellBookItemName(i, BOOKTYPE_SPELL);
-													scanTexture = string.lower(GetSpellTexture(i, BOOKTYPE_SPELL) or (""));
+													scanTexture = Compat.NormalizeTexture(Compat.GetSpellBookItemTexture(i, BOOKTYPE_SPELL));
 
-													if (scanName == newName and scanTexture == objectTexture) then
+													if (scanName == newName and scanTexture == Compat.NormalizeTexture(objectTexture)) then
 														rankFound = rankFound + 1;
 														if not (objectRank) then
 															newName = scanName;
@@ -6184,7 +6161,7 @@ function Lunar.Template:ParseTemplateData()
 														end
 													end
 
-													if (scanTexture ~= objectTexture) and (rankFound > 0) then
+													if (scanTexture ~= Compat.NormalizeTexture(objectTexture)) and (rankFound > 0) then
 														if not (objectRank) or (objectRank and (objectRank <= rankFound)) then
 															newName, rankFound = Lunar.API:GetSpellBookItemName(i - 1, BOOKTYPE_SPELL);
 														end
@@ -6200,7 +6177,7 @@ function Lunar.Template:ParseTemplateData()
 												local mountIDs = C_MountJournal.GetMountIDs()
 												for key, value in pairs(mountIDs) do	
 													scanName, spellID, scanTexture = C_MountJournal.GetMountInfoByID(value);
-													scanTexture = string.lower(scanTexture);
+													scanTexture = Compat.NormalizeTexture(scanTexture);
 													if (scanName == spellID) then
 														newName = spellID;
 														break;
@@ -6212,9 +6189,9 @@ function Lunar.Template:ParseTemplateData()
 											if not newName and companionCheck then
 												numPets, numOwned = C_PetJournal.GetNumPets()
  												for i = 1, numPets do 
-													_, _, _, _, _, _, _, scanName, scanTexture = C_PetJournal.GetPetInfoByIndex(index)
+													_, _, _, _, _, _, _, scanName, scanTexture = C_PetJournal.GetPetInfoByIndex(i)
 													_, _, scanName = GetCompanionInfo("critter", i);
-													scanTexture = string.lower(scanTexture);
+													scanTexture = Compat.NormalizeTexture(scanTexture);
 													if (scanName == spellID) then
 														newName = spellID;
 														break;
@@ -6237,13 +6214,13 @@ function Lunar.Template:ParseTemplateData()
 									rankFound = 0;
 									newName = nil;
 
-									objectTexture = string.lower(objectTexture or (""));
+									local objectTextureKey = Compat.NormalizeTexture(objectTexture);
 									for i = 1, totalSpells do
 										scanName, scanRank = Lunar.API:GetSpellBookItemName(i, BOOKTYPE_SPELL);
 
-										scanTexture = string.lower(C_Spell.GetSpellTexture(i, BOOKTYPE_SPELL) or (""));
+										scanTexture = Compat.NormalizeTexture(Compat.GetSpellBookItemTexture(i, BOOKTYPE_SPELL));
 
-										if (scanTexture == objectTexture) then
+										if (scanTexture == objectTextureKey) then
 											rankFound = rankFound + 1;
 											if not (objectRank) then
 												newName = scanName;
@@ -6254,7 +6231,7 @@ function Lunar.Template:ParseTemplateData()
 											end
 										end
 
-										if (scanTexture ~= objectTexture) and (rankFound > 0) then
+										if (scanTexture ~= objectTextureKey) and (rankFound > 0) then
 											if not (objectRank) or (objectRank and (objectRank <= rankFound)) then
 												newName, rankFound = Lunar.API:GetSpellBookItemName(i - 1, BOOKTYPE_SPELL);
 												isNotLearned = (GetSpellBookItemInfo(i - 1, BOOKTYPE_SPELL) == "FUTURESPELL");
@@ -6273,8 +6250,8 @@ function Lunar.Template:ParseTemplateData()
 										local mountIDs = C_MountJournal.GetMountIDs()
 										for key, value in pairs(mountIDs) do	
 											scanName, spellID, scanTexture = C_MountJournal.GetMountInfoByID(value);
-											scanTexture = string.lower(scanTexture);
-											if (scanTexture == objectTexture) then
+											scanTexture = Compat.NormalizeTexture(scanTexture);
+											if (scanTexture == objectTextureKey) then
 												newName = scanName;
 												break;
 											end
@@ -6285,8 +6262,8 @@ function Lunar.Template:ParseTemplateData()
 									if Lunar.API:IsVersionRetail() and not newName and not isNotLearned then
 										for i = 1, GetNumCompanions("critter") do 
 											_, _, scanName, scanTexture = GetCompanionInfo("critter", i);
-											scanTexture = string.lower(scanTexture);
-											if (scanTexture == objectTexture) then
+											scanTexture = Compat.NormalizeTexture(scanTexture);
+											if (scanTexture == objectTextureKey) then
 												newName = scanName;
 												break;
 											end

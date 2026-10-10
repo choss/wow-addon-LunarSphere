@@ -95,64 +95,27 @@ local stateTransitionsAlwaysShown;	-- Transistion string for always visible menu
 local string = string;
 local tonumber = tonumber;
 
--- Alias functions that are under a namespace in Retail (and Vanilla), but not in Cata :-(
--- The aliases use the Cata funciton names so we don't have to mess with the C_Spell namespace.
-local IsUsableSpell = IsUsableSpell;
-if C_Spell.IsSpellUsable then
-	IsUsableSpell = C_Spell.IsSpellUsable
-end
-
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
-end
-
-local GetSpellCooldown = GetSpellCooldown
-if C_Spell.GetSpellCooldown then
-	GetSpellCooldown = Lunar.API:Deconfabulate(C_Spell.GetSpellCooldown)
-end
-
-local GetSpellTabInfo = GetSpellTabInfo
-if C_SpellBook.GetSpellBookSkillLineInfo then
-	GetSpellTabInfo = Lunar.API:Deconfabulate(C_SpellBook.GetSpellBookSkillLineInfo)
-end
-
-local IsSpellInRange = IsSpellInRange
-if C_Spell.IsSpellInRange then
-	IsSpellInRange = C_Spell.IsSpellInRange
-end
-
-local GetSpellTexture = GetSpellTexture
-if C_Spell.GetSpellTexture then
-	GetSpellTexture = C_Spell.GetSpellTexture
-end
-
--- https://warcraft.wiki.gg/wiki/Patch_11.0.0/API_changes
-local BOOKTYPE_SPELL = BOOKTYPE_SPELL
-if Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player then
-	BOOKTYPE_SPELL = Enum.SpellBookSpellBank.Player
-end
-
-local BOOKTYPE_PET = BOOKTYPE_PET
-if Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet then
-	BOOKTYPE_PET = Enum.SpellBookSpellBank.Pet
-end
-
-local IsAttackSpell = IsAttackSpell
-if C_Spell.IsAutoAttackSpell then
-	IsAttackSpell = C_Spell.IsAutoAttackSpell
-end
-
-local IsCurrentSpell = IsCurrentSpell
-if C_Spell.IsCurrentSpell then
-	IsCurrentSpell = C_Spell.IsCurrentSpell
-end
-
-local IsAutoRepeatSpell = IsAutoRepeatSpell
-if C_Spell.IsAutoRepeatSpell then
-	IsAutoRepeatSpell = C_Spell.IsAutoRepeatSpell
-end
-
+-- Client API compatibility (see moduleCompat.lua). These keep the legacy call shapes
+-- but route to the C_ namespaces on Midnight and WoW: Forever.
+local Compat = Lunar.Compat;
+local IsUsableSpell = Compat.IsUsableSpell;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetSpellCooldown = Compat.GetSpellCooldown;
+local GetSpellTabInfo = Compat.GetSpellTabInfo;
+local IsSpellInRange = Compat.IsSpellInRange;
+local GetSpellTexture = Compat.GetSpellTexture;
+local GetSpellBookItemName = Compat.GetSpellBookItemName;
+local IsAttackSpell = Compat.IsAttackSpell;
+local IsCurrentSpell = Compat.IsCurrentSpell;
+local IsAutoRepeatSpell = Compat.IsAutoRepeatSpell;
+local GetItemCount = Compat.GetItemCount;
+local IsConsumableItem = Compat.IsConsumableItem;
+local IsEquippedItem = Compat.IsEquippedItem;
+local GetInventorySlotInfo = Compat.GetInventorySlotInfo;
+local SetPortraitToTexture = Compat.SetPortraitToTexture;
+local BOOKTYPE_SPELL = Compat.BOOKTYPE_SPELL;
+local BOOKTYPE_PET = Compat.BOOKTYPE_PET;
+local issecretvalue = issecretvalue or function() return false; end
 Lunar.origBackdrop = nil;
 Lunar.origBackdropColor = nil;
 Lunar.origBackdropBorderColor = nil;
@@ -252,10 +215,37 @@ Lunar.cooldownEffectFunction = {
 			button.cooldown:Hide();
 			button:SetAlpha(1);
 			_G[button:GetName() .. "Icon"]:SetAlpha(1);
-			CooldownFrame_SetTimer(button.readyShine, startTime, duration, enabled)
+			Lunar.Button:SetCooldownFrame(button, startTime, duration, enabled);
 		end
 	end,
 	}
+
+-- /***********************************************
+--  * SetCooldownFrame
+--  * ========================
+--  *
+--  * Drives the button's Blizzard style cooldown swipe. Works with numbers as well as the
+--  * secret values / duration objects that Midnight hands out while in combat.
+--  *
+--  * Accepts: button, startTime, duration, enabled, (optional) duration object
+--  * Returns: None
+--  *********************
+function Lunar.Button:SetCooldownFrame(button, startTime, duration, enabled, durationObject)
+	local cooldown = button.readyShine;
+	if (not cooldown) then
+		return;
+	end
+	if (durationObject) and (cooldown.SetCooldownFromDurationObject) then
+		cooldown:SetCooldownFromDurationObject(durationObject, true);
+		return;
+	end
+	if (issecretvalue(startTime) or issecretvalue(duration) or issecretvalue(enabled)) then
+		-- Can't pass secrets to SetCooldown from add-on code, clear it instead
+		cooldown:Clear();
+		return;
+	end
+	CooldownFrame_Set(cooldown, startTime or 0, duration or 0, enabled);
+end
 
 -- /***********************************************
 --   Functions
@@ -406,18 +396,10 @@ local buttonOnEnter = [[
 	totalElapsed = nil;
 ]];
 
+-- Closing menus after the mouse leaves them is handled by the secure auto-hide driver
+-- (see the "closer" frames below), so nothing needs to happen here anymore.
 local buttonOnLeave = [[
-	if ((useMenuDelay == true) and ((menuOpen1 == true) or (menuOpen2 == true) or (menuOpen3 == true))) then
-		--print("  Left " .. menuDelay)
-		totalElapsed = 0
-		-- Broken in 3.0.8 patch, 3.0.9 may have resolved the issue with new code, check back then.
-
---		CooldownFrame_SetTimer(self.readyShine, GetTime(), menuDelay, 1)
-		CooldownFrame_SetTimer(frame, GetTime(), menuDelay, 1)
---		control:SetAnimating(true);
-		--SetUpAnimation(self, "SetScale", "if (elapsedFraction >= 1) then return 0.001; end; return 1;", menuDelay, nil, nil)
-		--SetUpAnimation(frame, updateFunc, posBody, totalTime, postFunc, reverse);
-	end
+	totalElapsed = nil;
 ]];
 
 local buttonOnClick = [[
@@ -483,22 +465,6 @@ menuHeader:WrapScript(newButton, "OnEnter", buttonOnEnter);
 menuHeader:WrapScript(newButton, "OnLeave", buttonOnLeave);
 
 
-menuHeader:SetAttribute('_onupdate',
-[[
-	if not useMenuDelay then
-		control:SetAnimating(false);
-		return;
-	end
-	if (totalElapsed) then
-		totalElapsed = totalElapsed + elapsed;
-		if (totalElapsed >= menuDelay) then
-			totalElapsed = nil;
-			toggle = true;
-			control:RunAttribute("_onclick");
-		end
-	end
-]]);
-	
 menuHeader:Show();
 menuHeader:SetAttribute('_onclick',
 	[[
@@ -515,10 +481,12 @@ menuHeader:SetAttribute('_onclick',
 		local child = select(i, self:GetChildren())
 		local showState
 
+		local closer = self:GetFrameRef("closer");
+
 		if (toggle == true) then
 			while child do
 				showState = child:GetAttribute("showstates");
-				if (showState == "!*") or (string.find(showState, state .. ",") == nil) then
+				if (showState == nil) or (showState == "!*") or (string.find(showState, tostring(state) .. ",") == nil) then
 					child:Hide();
 				else
 					child:Show();
@@ -526,15 +494,50 @@ menuHeader:SetAttribute('_onclick',
 				i = i + 1
 				child = select(i, self:GetChildren())
 			end
+
+			-- Hover menus and menus with an auto-close delay: register the menu (main
+			-- button + visible children) with the secure auto-hide driver. When the mouse
+			-- stays away for menuDelay seconds, the closer frame is hidden and its _onhide
+			-- snippet closes this menu. This works in combat.
+			if (closer) and (useMenuDelay == true) and (menuType ~= "always") then
+				closer:Show();
+				closer:RegisterAutoHide(menuDelay or 0.5);
+				i = 1;
+				child = select(i, self:GetChildren());
+				while child do
+					if child:IsShown() then
+						closer:AddToAutoHide(child);
+					end
+					i = i + 1;
+					child = select(i, self:GetChildren());
+				end
+			end
 		else
 			while child do
 				child:Hide();
 				i = i + 1
 				child = select(i, self:GetChildren())
 			end
+			if (closer) then
+				closer:UnregisterAutoHide();
+				closer:Hide();
+			end
 		end
-	]]	
+	]]
 );
+
+		-- Create the secure "closer" frame for this menu (see the _onclick snippet above)
+		local menuCloser = CreateFrame("Frame", "LunarMenu" .. index .. "ButtonCloser", UIParent, "SecureHandlerShowHideTemplate");
+		menuCloser:SetAllPoints(newButton);
+		menuCloser:Hide();
+		menuCloser:SetFrameRef("header", menuHeader);
+		menuCloser:SetAttribute("_onhide", [[
+			local header = self:GetFrameRef("header");
+			if (header) and (header:GetAttribute("toggle") == true) then
+				header:RunAttribute("_onclick");
+			end
+		]]);
+		menuHeader:SetFrameRef("closer", menuCloser);
 
 		menuHeader:SetAttribute('statebindings', '*:S0;');
 		menuHeader:SetAttribute('childraise', false);
@@ -1253,7 +1256,7 @@ function Lunar.Button:ToggleMenuAutoHide()
 
 		-- Delay handling
 		if (LunarSphereSettings.buttonData[index].menuUseDelay == 1) and (LunarSphereSettings.buttonData[index].menuType ~= 3) then
-			menuHeader:Execute("useMenuDelay = true; menuDelay = " .. LunarSphereSettings.buttonData[index].menuDelay or ('3'));
+			menuHeader:Execute("useMenuDelay = true; menuDelay = " .. (tonumber(LunarSphereSettings.buttonData[index].menuDelay) or 3));
 		end
 	end
 end
@@ -1406,8 +1409,13 @@ function Lunar.Button:Create(name, parent, includeHeader)
 	button.readyShine:SetWidth(22);
 	button.readyShine:SetHeight(22);
 	button.readyShine:SetAlpha(1);
+	-- Our buttons are round, so make the cooldown swipe round as well
+	if (button.readyShine.SetSwipeTexture) then
+		button.readyShine:SetSwipeTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask");
+		button.readyShine:SetUseCircularEdge(true);
+	end
 
-	button.cooldown = button:CreateTexture("BACKGROUND");
+	button.cooldown = button:CreateTexture(nil, "BACKGROUND");
 	-- SetPortraitToTexture is not working with custom textures so we use a generic icon instead.
 	-- The icon doesn't actually matter since we change use SetVertexColor to make it appear black.
 	button.cooldown:SetTexture("Interface/Icons/INV_Misc_QuestionMark");
@@ -1420,7 +1428,7 @@ function Lunar.Button:Create(name, parent, includeHeader)
 	SetPortraitToTexture(button.cooldown, button.cooldown:GetTexture());
 	button.cooldown:Hide();
 
-	button.procGlow = button:CreateTexture("BACKGROUND");
+	button.procGlow = button:CreateTexture(nil, "BACKGROUND");
 
 	button.procGlow:SetTexture("Interface\\Cooldown\\starburst");
 	button.procGlow:SetWidth(38);
@@ -2506,7 +2514,7 @@ function Lunar.Button:UpdateLastUsedSubmenu(menuButton, childButton, clickType, 
 								Lunar.Button:UpdateBagDisplay(menuButton, stance, updateClick);
 							elseif (attributeType == "item") then
 								local objectType, stackTotal
-								_,_,_,_,_,objectType,_,stackTotal = C_Item.GetItemInfo(attributeValue);
+								_,_,_,_,_,objectType,_,stackTotal = Lunar.Compat.GetItemInfo(attributeValue);
 								if (IsConsumableItem(attributeValue) or (stackTotal > 1) or (objectType == Lunar.Items.reagentString)) then
 									_G[menuButton:GetName() .. "Count"]:SetText(GetItemCount(attributeValue, nil, true));
 
@@ -2631,7 +2639,7 @@ function Lunar.Button:ButtonTypeClick(buttonType)
 	end
 	if ((buttonType > 90) and (buttonType <= 94)) then
 		local bagID = buttonType - 90;
-		local translatedID = CharacterBag0Slot:GetID() + bagID - 1;
+		local translatedID = Compat.GetBagInventoryID(bagID);
 		local hadItem = PutItemInBag(translatedID);
 		if ( not hadItem ) then
 			ToggleBag(bagID);
@@ -2639,7 +2647,25 @@ function Lunar.Button:ButtonTypeClick(buttonType)
 		return;
 	end
 	if (buttonType == 95) then OpenAllBags(); return; end;
-	if (buttonType == 96) then ToggleKeyRing(); return; end;
+	if (buttonType == 96) then
+		-- The key ring only exists on old clients
+		if (ToggleKeyRing) then
+			ToggleKeyRing();
+		end
+		return;
+	end;
+
+	-- Menu bar buttons are secure "/click <MicroButton>" macros on modern clients, so
+	-- there's nothing left to do here (and calling the toggle functions from add-on code
+	-- would taint Blizzard's panels).
+	if (buttonType >= 100) and (buttonType < 110) and Compat.GetMenuBarMacro(buttonType) then
+		return;
+	end
+
+	-- Old clients, or a menu button that has no micro button on this client
+	if InCombatLockdown() and (buttonType >= 100) and (buttonType < 110) then
+		return;
+	end
 	if (buttonType == 100) then ToggleCharacter("PaperDollFrame"); return; end;
 	if (buttonType == 101) then return; end;
 		-- Can't use ToggleSpellBook, it introduces taint and doesn't work with securecall ...
@@ -2653,16 +2679,29 @@ function Lunar.Button:ButtonTypeClick(buttonType)
 	end
 --]]
 
-	if (buttonType == 102) then ToggleTalentFrame(); return; end;
+	-- These toggle functions don't exist on every client, so only call the ones we have
+	local function SafeToggle(func, ...)
+		if (type(func) == "function") then
+			pcall(func, ...);
+		end
+	end
+
+	if (buttonType == 102) then SafeToggle(ToggleTalentFrame); return; end;
 -- Croq Updated 	if (buttonType == 103) then ToggleFrame(QuestLogFrame); return; end;
-	if (buttonType == 104) then ToggleGuildFrame(); return; end; --ToggleFriendsFrame(); return; end;
-	if (buttonType == 105) then ToggleLFDParentFrame(); return; end;
-	if (buttonType == 106) then ToggleFrame(GameMenuFrame); return; end;
-	if (buttonType == 107) then ToggleHelpFrame(); return; end;
-	if (buttonType == 108) then ToggleAchievementFrame(); return; end;
---	if (buttonType == 109) then TogglePVPFrame(); return; end;
-	-- Croq Updated to PVEFrame_ToggleFrame("PVPUIFrame", HonorFrame)
-	if (buttonType == 109) then PVEFrame_ToggleFrame("PVPUIFrame", HonorFrame); return; end;
+	if (buttonType == 104) then SafeToggle(ToggleGuildFrame); return; end; --ToggleFriendsFrame(); return; end;
+	if (buttonType == 105) then SafeToggle(ToggleLFDParentFrame); return; end;
+	if (buttonType == 106) then SafeToggle(ToggleFrame, GameMenuFrame); return; end;
+	if (buttonType == 107) then SafeToggle(ToggleHelpFrame); return; end;
+	if (buttonType == 108) then SafeToggle(ToggleAchievementFrame); return; end;
+	-- PvP has no micro menu button, so it always goes through the toggle function
+	if (buttonType == 109) then
+		if (PVEFrame_ToggleFrame) then
+			SafeToggle(PVEFrame_ToggleFrame, "PVPUIFrame", HonorFrame);
+		else
+			SafeToggle(TogglePVPFrame);
+		end
+		return;
+	end;
 
 	-- Trade clicks
 	if (buttonType >= 110) and (buttonType < 120) then
@@ -2674,7 +2713,7 @@ function Lunar.Button:ButtonTypeClick(buttonType)
 				_G["LSbackground"]:RegisterEvent("TRADE_REQUEST_CANCEL");
 				_G["LSbackground"]:RegisterEvent("CHAT_MSG_SYSTEM");
 
-				if (TradeFrame:IsShown() and (TradeFrameRecipientNameText:GetText() ~= UnitName("target"))) then
+				if (TradeFrame:IsShown() and (TradeFrameRecipientNameText:GetText() ~= Compat.Readable(UnitName("target"), ""))) then
 					-- We close the trade window, but the window will reopen when the event
 					-- "TRADE_CLOSED" is called, which is our stage 0 flag.
 					Lunar.Button.tradingStage = 0;
@@ -3327,7 +3366,7 @@ function Lunar.Button:ConvertToMenu(self, clickType)
 		elseif (cursorType == "item") then
 
 			-- Get the texture of the item
-			_, _, _, _, _, _, _, _, _, objectTexture = C_Item.GetItemInfo(objectID);
+			_, _, _, _, _, _, _, _, _, objectTexture = Lunar.Compat.GetItemInfo(objectID);
 
 		-- If it was a macro drag ...
 		elseif (cursorType == "macro") then
@@ -3438,13 +3477,13 @@ function Lunar.Button:Assign(self, clickType, stance)
 	end
 	
 	if (cursorType == "battlepet") then
-		Lunar.API:--print("Battle pet shortcuts are not yet supported.");
+		-- Battle pet shortcuts are not supported
 		ClearCursor();
 		return;
 	end
 	
 	--if (cursorType == "item") then
-	--		local itemType = select(6, C_Item.GetItemInfo(objectID));
+	--		local itemType = select(6, Lunar.Compat.GetItemInfo(objectID));
 	--		local oID = objectID;
 			
 			--print(itemType.." "..objectID);
@@ -3591,10 +3630,9 @@ function Lunar.Button:Assign(self, clickType, stance)
 						objectName = Lunar.API:FixFaerie(objectName);
 					end
 --				end
-				-- We don't want spell ranks on the first spell tab data or the professions tab ... these are generic
-				if (objectID <= (select(4, GetSpellTabInfo(1))) or objectSpellID >= (select(3, GetSpellTabInfo(5)))) then
-					spellRank = "";
-				end
+				-- Spell ranks are no longer stored with the spell name, so the old
+				-- "first spell tab / professions tab" rank check is not needed anymore.
+				spellRank = "";
 	--			objectName = objectName .. spellRank;
 			end
 
@@ -3609,14 +3647,14 @@ function Lunar.Button:Assign(self, clickType, stance)
 		elseif (cursorType == "flyout") then
 
 			-- Get the name of the spell and its texture
-			objectName = objectID GetSpellBookItemName(objectID, objectData);
+			objectName = objectID;
 			objectTexture = objectData;
 
 		-- If it was an item drag ...
 		elseif (cursorType == "item") then
 
 			-- Get the name of the item, what it can stack as, and its texture
-			objectName, _, _, _, _, objectMainType, objectType, stackTotal, _, objectTexture = C_Item.GetItemInfo(objectData);
+			objectName, _, _, _, _, objectMainType, objectType, stackTotal, _, objectTexture = Lunar.Compat.GetItemInfo(objectData);
 			
 
 			if Lunar.API:IsVersionRetail() and C_ToyBox.GetToyInfo(objectID) then
@@ -3953,7 +3991,7 @@ function Lunar.Button:AssignByType(button, clickType, buttonType, stance, lastUs
 			-- grab the texture, if the object exists
 			if (objectName) then
 				local objectType_l, stackTotal_l;
-				_, _, _, _, _, objectMainType, objectType_l, stackTotal_l, _, objectTexture = C_Item.GetItemInfo(objectName);
+				_, _, _, _, _, objectMainType, objectType_l, stackTotal_l, _, objectTexture = Lunar.Compat.GetItemInfo(objectName);
 
 				--print("objectMainType : ", objectMainType, objectType_l, stackTotal_l, objectTexture)
 
@@ -4067,7 +4105,7 @@ function Lunar.Button:AssignByType(button, clickType, buttonType, stance, lastUs
 					if (objectData) then
 						-- Get the name of the spell and its texture
 						objectName = GetSpellBookItemName(objectID, objectData);
-						objectTexture = GetSpellTexture(objectID, objectData);
+						objectTexture = Compat.GetSpellBookItemTexture(objectID, objectData);
 					end
 
 				-- If it was an item drag ...
@@ -4077,7 +4115,7 @@ function Lunar.Button:AssignByType(button, clickType, buttonType, stance, lastUs
 					-- what it can stack as, and its texture
 					if (objectData) then
 
-						objectName, _, _, _, _, objectType, _, stackTotal, _, objectTexture = C_Item.GetItemInfo(objectData);
+						objectName, _, _, _, _, objectType, _, stackTotal, _, objectTexture = Lunar.Compat.GetItemInfo(objectData);
 
 --						if (objectType == LunarSphereGlobal.searchData.armor) or (objectType == LunarSphereGlobal.searchData.weapon) then
 --							-- Grab the item link and secure only the parts that we need for the item
@@ -4089,7 +4127,7 @@ function Lunar.Button:AssignByType(button, clickType, buttonType, stance, lastUs
 					-- If we don't have objectData, we're pulling from saved data. All we care about is the stackTotal
 					-- and the objectType (if they exist because they are in our inventory)
 					else
-						_, _, _, _, _, _, objectType, stackTotal = C_Item.GetItemInfo(objectName);
+						_, _, _, _, _, _, objectType, stackTotal = Lunar.Compat.GetItemInfo(objectName);
 					end
 
 					-- If the item is consumable, or can stack, or is a reagent ... we will show the
@@ -4216,9 +4254,11 @@ end
 				objectName = "/use " .. objectName1 .. "\n/use " .. objectName2;
 				button:SetAttribute("*type-S" .. stance  .. clickType, "macrotext")
 				button:SetAttribute("*macrotext-S" .. stance .. clickType, objectName)
-			elseif (buttonType == 101) then
+			elseif (buttonType >= 100) and (buttonType < 110) and (Compat.GetMenuBarMacro(buttonType) or (buttonType == 101)) then
+				-- Menu bar buttons click the matching Blizzard micro menu button through a
+				-- secure macro, so they also work in combat and don't taint the UI.
 				cursorType = "macrotext"
-				objectName = "/click SpellbookMicroButton";
+				objectName = Compat.GetMenuBarMacro(buttonType) or "/click SpellbookMicroButton";
 				button:SetAttribute("*type-S" .. stance  .. clickType, "macrotext")
 				button:SetAttribute("*macrotext-S" .. stance .. clickType, objectName)
 			elseif (buttonType == 130) or (buttonType == 131) then
@@ -4376,7 +4416,7 @@ function Lunar.Button:GetBagTexture(buttonType)
 	elseif (buttonType <= 94) then
 		local objectName = C_Container.GetBagName(buttonType - 90);
 		if (objectName) then
-			_,_,_,_,_,_,_,_,_, objectTexture = C_Item.GetItemInfo(objectName);
+			_,_,_,_,_,_,_,_,_, objectTexture = Lunar.Compat.GetItemInfo(objectName);
 		end
 	else
 		objectTexture = LUNAR_ART_PATH .. "menuKey";
@@ -4594,7 +4634,7 @@ function Lunar.Button:LoadButtonData(buttonID)
 						end
 --]]
 						-- Get the name of the item, what it can stack as, and its texture
-						_, _, _, _, _, _, objectType, stackTotal = C_Item.GetItemInfo(objectName);
+						_, _, _, _, _, _, objectType, stackTotal = Lunar.Compat.GetItemInfo(objectName);
 
 						-- If the item is consumable, or can stack, or we set it to show a count ... we will show the
 						-- count of the item on the button
@@ -4634,7 +4674,7 @@ function Lunar.Button:LoadButtonData(buttonID)
 						else
 							macroAction = GetActionFromMacroText(macroBody);
 							if (macroAction) then
-								_,_,_,_,_,_,_,_,_,newTexture = C_Item.GetItemInfo(macroAction);
+								_,_,_,_,_,_,_,_,_,newTexture = Lunar.Compat.GetItemInfo(macroAction);
 								if not newTexture then
 									newTexture = GetSpellTexture(macroAction);
 								end
@@ -4683,6 +4723,16 @@ function Lunar.Button:LoadButtonData(buttonID)
 							_G[buttonName]:SetAttribute("target-slot-S" .. stance .. clickType, GetInventorySlotInfo("SecondaryHandSlot"));
 						elseif (buttonType == 122) then
 							_G[buttonName]:SetAttribute("target-slot-S" .. stance .. clickType, GetInventorySlotInfo("RangedSlot"));
+						end
+					end
+
+					-- Menu bar buttons use a secure "/click <MicroButton>" macro. The micro
+					-- button names differ between clients, so build the macro on load.
+					if (buttonType >= 100) and (buttonType < 110) then
+						local menuMacro = Compat.GetMenuBarMacro(buttonType);
+						if (menuMacro) then
+							cursorType = "macrotext";
+							objectName = menuMacro;
 						end
 					end
 
@@ -5270,7 +5320,7 @@ Lunar.eventHandler = {
 	end,
 	["SPELL_ACTIVATION_OVERLAY_GLOW_HIDE"] = function (self, event, arg1)
 		if (self.buttonType == 1) then
-			local spellID = C_Spell.GetSpellIDForSpellIdentifier(self.actionName)
+			local spellID = Compat.GetSpellIDForSpellIdentifier(self.actionName)
 			-- Get spell ID and check it against the arg
 			if (spellID == arg1) then
 				self.procGlow:Hide();
@@ -5281,7 +5331,7 @@ Lunar.eventHandler = {
 	["SPELL_ACTIVATION_OVERLAY_GLOW_SHOW"] = function (self, event, arg1)
 		if (self.buttonType == 1) then
 			-- Get spell ID and check it against the arg
-			local spellID = C_Spell.GetSpellIDForSpellIdentifier(self.actionName)
+			local spellID = Compat.GetSpellIDForSpellIdentifier(self.actionName)
 			if (spellID == arg1) then
 				self.procGlow:Show();
 				self.procGlowShown = true;
@@ -5363,7 +5413,7 @@ function Lunar.Button.UpdateState(self, stateData)
 					_, actionType, actionName = Lunar.Button:GetButtonData(self:GetID(), self.currentStance, showActionCount);
 
 					if (actionType == "item") then
-						local objectName, _, _, _, _, _, objectType, stackTotal = C_Item.GetItemInfo(actionName);
+						local objectName, _, _, _, _, _, objectType, stackTotal = Lunar.Compat.GetItemInfo(actionName);
 
 						if (objectName) then
 							if (IsConsumableItem(objectName) or (stackTotal > 1) or (objectType == Lunar.Items.reagentString)) then
@@ -5448,7 +5498,7 @@ function Lunar.Button:Update(self, countOnly)
 			self:RegisterEvent("SPELL_UPDATE_USABLE");
 			self:RegisterEvent("SPELL_UPDATE_COOLDOWN");
 			--self:RegisterEvent("PLAYER_AURAS_CHANGED");
-			self:RegisterEvent("UNIT_AURA");
+			self:RegisterUnitEvent("UNIT_AURA", "player");
 			self:RegisterEvent("PLAYER_TARGET_CHANGED");
 --			self:RegisterEvent("MODIFIER_STATE_CHANGED");
 			self:RegisterEvent("ACTIONBAR_SLOT_CHANGED");
@@ -5464,7 +5514,7 @@ function Lunar.Button:Update(self, countOnly)
 
 			-- If it's an item button, we also add these events
 			if (self.actionType == "item") or (self.spellReagent) or (self.actionType == "macrotext") or (self.buttonType == 3)  then
-				self:RegisterEvent("UNIT_INVENTORY_CHANGED");
+				self:RegisterUnitEvent("UNIT_INVENTORY_CHANGED", "player");
 				self:RegisterEvent("UPDATE_INVENTORY_ALERTS");
 				self:RegisterEvent("BAG_UPDATE");
 				self:RegisterEvent("BAG_UPDATE_COOLDOWN");
@@ -5589,7 +5639,7 @@ function Lunar.Button:Update(self, countOnly)
 		objectName = GetActionFromMacroText(macroBody);
 
 		if (objectName) then
-			_, itemString = C_Item.GetItemInfo(objectName);
+			_, itemString = Lunar.Compat.GetItemInfo(objectName);
 			if (itemString) then
 				macroEquiped = IsEquippedItem(objectName);
 			end
@@ -5714,8 +5764,16 @@ function Lunar.Button:UpdateCount(self)
 		
 		-- Possibly just switch actionType and actionName to "item" and the reagent name, instead of this code ... to save space?
 		if (actionType == "spell") and (self.spellReagent) then
-			reagentCount = C_Spell.GetSpellCastCount(actionName) or (0);
-			if (reagentCount > 0) then
+			reagentCount = Compat.GetSpellCastCount(actionName) or (0);
+			if issecretvalue(reagentCount) then
+				-- Secret while in combat (Midnight): display it without comparing it
+				if (self:GetID() > 0) then
+					_G[self:GetName() .. "Count"]:Show();
+					_G[self:GetName() .. "Count"]:SetText(Compat.CountText(reagentCount));
+				elseif (LunarSphereSettings.sphereTextType == LS_EVENT_SPHERE_COUNT) then
+					Lunar.Sphere:SetSphereText(Compat.CountText(reagentCount));
+				end
+			elseif (reagentCount > 0) then
 				if (self:GetID() > 0) then
 					_G[self:GetName() .. "Count"]:Show();
 					_G[self:GetName() .. "Count"]:SetText(reagentCount);
@@ -5756,7 +5814,7 @@ function Lunar.Button:UpdateCount(self)
 							end
 						end
 					else
-						actionName = C_Item.GetItemInfo(GetInventoryItemLink("player", self.buttonType - 117) or ("")) or ("");
+						actionName = Lunar.Compat.GetItemInfo(GetInventoryItemLink("player", self.buttonType - 117) or ("")) or ("");
 					end
 					actionName = actionName or ("") ;
 
@@ -5776,7 +5834,7 @@ function Lunar.Button:UpdateCount(self)
 
 			-- Obtain the stackTotal that the item can have
 			local stackTotal, objectMainType, objectType, itemLink, itemID, itemCount;
-			_, itemLink, _, _, _, objectMainType, objectType, stackTotal = C_Item.GetItemInfo(actionName);
+			_, itemLink, _, _, _, objectMainType, objectType, stackTotal = Lunar.Compat.GetItemInfo(actionName);
 
 			-- Make sure we have a stackTotal (meaning, we have it in our in our inventory)
 			if (stackTotal) then
@@ -5863,6 +5921,61 @@ end
 --  * Accepts: button to update
 --  * Returns: none
 --  *********************
+function Lunar.Button:ShowSecretCooldown(button, spellName)
+
+	local buttonID = button:GetID();
+
+	-- Our own timers can't run on secret values, stop them
+	if (timerData[buttonID]) then
+		timerData[buttonID].cooldownElapsed = 0;
+		timerData[buttonID].cooldownTimer = nil;
+	end
+
+	if (buttonID == 0) then
+		if (LunarSphereSettings.sphereTextType == LS_EVENT_SPHERE_COOLDOWN) then
+			Lunar.Sphere:SetSphereText("");
+		end
+		return;
+	end
+
+	-- Reset the custom cooldown effects
+	button.cooldownText:SetText("");
+	button.cooldownText:Hide();
+	button.cooldown:Hide();
+	button:SetAlpha(1);
+	_G[button:GetName() .. "Icon"]:SetAlpha(1);
+
+	local durationObject = Compat.GetSpellCooldownDuration(spellName, (LunarSphereSettings.skipGlobalCooldown == true));
+	local cooldown = button.readyShine;
+	if (durationObject) and (cooldown) then
+		button.secretCooldown = true;
+		cooldown:SetDrawSwipe(true);
+		-- Our cooldown text can't be computed from secrets, so use Blizzard's countdown
+		-- numbers instead if the user wants cooldown text.
+		if (LunarSphereSettings.cooldownShowText == true) and (not button.secretCountdown) then
+			button.secretCountdown = true;
+			cooldown:SetHideCountdownNumbers(false);
+		end
+		Lunar.Button:SetCooldownFrame(button, nil, nil, nil, durationObject);
+	elseif (cooldown) then
+		cooldown:Clear();
+	end
+end
+
+function Lunar.Button:ClearSecretCooldown(button)
+	button.secretCooldown = nil;
+	local cooldown = button.readyShine;
+	if (cooldown) then
+		if (button.secretCountdown) then
+			button.secretCountdown = nil;
+			cooldown:SetHideCountdownNumbers(true);
+		end
+		if (LunarSphereSettings.cooldownEffect ~= 7) then
+			cooldown:Clear();
+		end
+	end
+end
+
 function Lunar.Button.UpdateCooldown(self, filter)
 
 	local button = self
@@ -5917,10 +6030,12 @@ function Lunar.Button.UpdateCooldown(self, filter)
 				end
 			end
 			if actionName then
-				if C_Item.GetItemInfo(actionName) then
+				if Lunar.Compat.GetItemInfo(actionName) then
 					startTime, duration = Lunar.API:GetItemCooldown(actionName);
+					actionType = "item";
 				else
 					startTime, duration, enable = GetSpellCooldown(actionName);
+					actionType = "spell";
 				end
 			end
 		elseif (actionType == "pet") then
@@ -5937,9 +6052,20 @@ function Lunar.Button.UpdateCooldown(self, filter)
 			startTime, duration, enable = GetPetActionCooldown(tonumber(actionName));
 		end
 
+		-- Midnight: spell cooldowns are secret values while in combat. We can't do any math
+		-- with them, so hand them to a Blizzard cooldown swipe through a duration object.
+		if Compat.AnySecret(startTime, duration, enable) then
+			Lunar.Button:ShowSecretCooldown(button, (actionType == "spell") and actionName or nil);
+			return;
+		elseif (button.secretCooldown) then
+			Lunar.Button:ClearSecretCooldown(button);
+		end
+
 		-- Retrieve the cooldown text, with seconds, minutes, or hours as well
 		filteredCooldown = Lunar.API:FilterCooldown(startTime, duration);
-		
+
+	elseif (button.secretCooldown) then
+		Lunar.Button:ClearSecretCooldown(button);
 	end
 
 	-- If the cooldown is not 0... and "enable" is not set to 0 (happens on shadowform
@@ -6249,7 +6375,7 @@ function Lunar.Button:UpdateUsable(self, filter, rangeOnly)
 		-- Pull the data based on the type of button we have
 		if (self.actionType == "spell") then
 			-- spellLink actually means the spell ID :-(
-			spellLink = C_Spell.GetSpellIDForSpellIdentifier(self.actionName);
+			spellLink = Compat.GetSpellIDForSpellIdentifier(self.actionName);
 			texture = GetSpellTexture(self.actionName);
 			name, rank = Lunar.API:GetSpellName(self.actionName)
 			if (rank) then
@@ -6290,12 +6416,12 @@ function Lunar.Button:UpdateUsable(self, filter, rangeOnly)
 			inRange = IsSpellInRange(name, "target")
 		elseif (self.actionType == "item") then
 			if (not (rangeOnly == true)) then
-				isUsable, notEnoughMana = C_Item.IsUsableItem(self.actionName);
+				isUsable, notEnoughMana = Lunar.Compat.IsUsableItem(self.actionName);
 				self.notEnoughMana = nil; --notEnoughMana;
 				self.isUsable = isUsable;
 			end
-			if C_Item.ItemHasRange(self.actionName) then
-				inRange = C_Item.IsItemInRange(self.actionName, "target");	
+			if Lunar.Compat.ItemHasRange(self.actionName) then
+				inRange = Lunar.Compat.IsItemInRange(self.actionName, "target");	
 			end
 		elseif (self.actionType == "macro") or (self.actionType == "macrotext") then
 			isUsable = true;
@@ -6310,14 +6436,14 @@ function Lunar.Button:UpdateUsable(self, filter, rangeOnly)
 --				end
 			end
 			if macroAction and (macroAction ~= "") then
-				if C_Item.GetItemInfo(macroAction) then
+				if Lunar.Compat.GetItemInfo(macroAction) then
 					if not (rangeOnly == true) then
-						isUsable, notEnoughMana = C_Item.IsUsableItem(macroAction);
+						isUsable, notEnoughMana = Lunar.Compat.IsUsableItem(macroAction);
 						self.notEnoughMana = nil --notEnoughMana;
 						self.isUsable = isUsable;
 					end
-					if C_Item.ItemHasRange(macroAction) then
-						inRange = C_Item.IsItemInRange(macroAction, "target");	
+					if Lunar.Compat.ItemHasRange(macroAction) then
+						inRange = Lunar.Compat.IsItemInRange(macroAction, "target");	
 					end
 				else
 					if not (rangeOnly == true) then
@@ -6546,7 +6672,7 @@ function Lunar.Button:UpdateIcon(button)
 	--			if not objectName then
 	--				objectName = GetMacroItem(actionName);
 					if (objectName) then
-						_,_,_,_,_,_,_,_,_,newTexture = C_Item.GetItemInfo(objectName); --GetActionFromMacroText(macroBody));
+						_,_,_,_,_,_,_,_,_,newTexture = Lunar.Compat.GetItemInfo(objectName); --GetActionFromMacroText(macroBody));
 						if not newTexture then
 							newTexture = GetSpellTexture(objectName);
 						end
@@ -6568,7 +6694,7 @@ function Lunar.Button:UpdateIcon(button)
 
 		-- Grab the item texture first.
 --[[		if (objectName) then
-			_,_,_,_,_,_,_,_,_,newTexture = C_Item.GetItemInfo(objectName); --GetActionFromMacroText(macroBody));
+			_,_,_,_,_,_,_,_,_,newTexture = Lunar.Compat.GetItemInfo(objectName); --GetActionFromMacroText(macroBody));
 		end
 
 		-- If it wasn't an item, we'll have no texture. So, grab the spell texture
@@ -6605,13 +6731,13 @@ function Lunar.Button:GetIconTexture(cursorType, objectID, objectData)
 
 		-- Get the name of the spell and its texture
 --		objectName = GetSpellBookItemName(objectID, objectData);
-		objectTexture = GetSpellTexture(objectID, objectData);
+		objectTexture = Compat.GetSpellBookItemTexture(objectID, objectData);
 
 	-- If it was an item drag ...
 	elseif (cursorType == "item") then
 
 		-- Get the name of the item, what it can stack as, and its texture
-		_,_,_,_,_,_,_,_,_,objectTexture = C_Item.GetItemInfo(objectData);
+		_,_,_,_,_,_,_,_,_,objectTexture = Lunar.Compat.GetItemInfo(objectData);
 
 	-- If it was a macro drag ...
 	elseif (cursorType == "macro") then
@@ -6965,104 +7091,73 @@ function Lunar.Button:Swap(srcButton, destButton, childSwap)
 	end
 end
 
-function Lunar.Button:TooltipOnShow()
+-- /***********************************************
+--  * SkinTooltip
+--  * ========================
+--  *
+--  * Applies (or removes) the LunarSphere tooltip colors on the GameTooltip. Modern
+--  * clients draw tooltips with a NineSlice instead of a backdrop, so we only change its
+--  * colors (we never replace methods on the GameTooltip, which would taint it).
+--  *
+--  * Accepts: true to apply the colors, false to restore the default ones
+--  * Returns: None
+--  *********************
+function Lunar.Button:SkinTooltip(enable)
+	local tooltip = GameTooltip;
+	local nineSlice = tooltip.NineSlice;
 
---	GameTooltip:SetBackdrop(ItemRefTooltip:GetBackdrop()); --origBackdrop);
---	GameTooltip:SetBackdropColor(ItemRefTooltip:GetBackdropColor()); --unpack(origBackdropColor));
-
-	if not Lunar.origBackdrop then
-		Lunar.origBackdrop = GameTooltip:GetBackdrop();
-		Lunar.origBackdropColor = {GameTooltip:GetBackdropColor()};
-		Lunar.origBackdropBorderColor = {GameTooltip:GetBackdropBorderColor()};
+	if (enable) then
+		local bg = LunarSphereSettings.tooltipBackground or {0.05, 0.05, 0.10, 0.75};
+		local border = LunarSphereSettings.tooltipBorder or {1, 1, 1, 1};
+		if (nineSlice) and (nineSlice.SetCenterColor) then
+			nineSlice:SetCenterColor(bg[1], bg[2], bg[3], bg[4] or 1);
+			nineSlice:SetBorderColor(border[1], border[2], border[3], border[4] or 1);
+		elseif (tooltip.SetBackdropColor) then
+			tooltip:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1);
+			tooltip:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1);
+		end
+		Lunar.Button.tooltipSkinned = true;
+	elseif (Lunar.Button.tooltipSkinned) then
+		local bgR, bgG, bgB = 0.09, 0.09, 0.19;
+		local borderR, borderG, borderB = 1, 1, 1;
+		if (TOOLTIP_DEFAULT_BACKGROUND_COLOR) and (TOOLTIP_DEFAULT_BACKGROUND_COLOR.GetRGB) then
+			bgR, bgG, bgB = TOOLTIP_DEFAULT_BACKGROUND_COLOR:GetRGB();
+		end
+		if (TOOLTIP_DEFAULT_COLOR) and (TOOLTIP_DEFAULT_COLOR.GetRGB) then
+			borderR, borderG, borderB = TOOLTIP_DEFAULT_COLOR:GetRGB();
+		end
+		if (nineSlice) and (nineSlice.SetCenterColor) then
+			nineSlice:SetCenterColor(bgR, bgG, bgB, 1);
+			nineSlice:SetBorderColor(borderR, borderG, borderB, 1);
+		elseif (tooltip.SetBackdropColor) then
+			tooltip:SetBackdropColor(bgR, bgG, bgB, 1);
+			tooltip:SetBackdropBorderColor(borderR, borderG, borderB, 1);
+		end
+		Lunar.Button.tooltipSkinned = nil;
 	end
+end
+
+function Lunar.Button:TooltipOnShow()
 
 	-- Skinning
 	if (LunarSphereSettings.skinTooltips == true) and ((Lunar.Button.tooltipCalled == true) or (LunarSphereSettings.skinAllTooltips == true)) then
-		if not (Lunar.Button.tooltipSkinned) then
-			Lunar.Button.tooltipSkinned = true;
-			GameTooltip:SetBackdrop(LS_backdropTemplate);
-			GameTooltip:SetBackdropBorderColor(unpack(LunarSphereSettings.tooltipBorder));
-			GameTooltip:SetBackdropColor(unpack(LunarSphereSettings.tooltipBackground));
-		end
-	else
-		if Lunar.Button.tooltipSkinned then
-			Lunar.Button:TooltipOnHide();
-		end
+		Lunar.Button:SkinTooltip(true);
+	elseif (Lunar.Button.tooltipSkinned) then
+		Lunar.Button:SkinTooltip(false);
 	end
 
-	-- Positioning
---[[
-	if not Lunar.Button.tooltipSetOwner then
-		if (LunarSphereSettings.anchorMode == true) then
-			if (Lunar.Button.tooltipCalled ~= true) then
-				Lunar.Button.tooltipSetOwner = true;
-				GameTooltip:SetOwner(GameTooltip:GetOwner(), "ANCHOR_NONE");
-
-				local pos = LunarSphereSettings.anchorCorner +  1;
-				GameTooltip:ClearAllPoints();
-				GameTooltip:SetPoint(Lunar.Button.tooltipPos[9 - pos], _G["LSSettingsAnchor"], Lunar.Button.tooltipPos[pos]);
-			end
-		end
-	else
-		Lunar.Button.tooltipSetOwner = nil;
-	end
---]]
 	Lunar.Button.tooltipCalled = nil;
 end
 
 function Lunar.Button:TooltipSetOwner()
-
 	Lunar.Button:TooltipOnShow()
-
-	-- Positioning
---[[
-	if not Lunar.Button.tooltipSetOwner then
-		if (LunarSphereSettings.anchorMode == true) then
-			if (Lunar.Button.tooltipCalled ~= true) then
-				Lunar.Button.tooltipSetOwner = true;
-				GameTooltip:SetOwner(GameTooltip:GetOwner(), "ANCHOR_NONE");
-				local pos = LunarSphereSettings.anchorCorner +  1;
-				GameTooltip:ClearAllPoints();
-				GameTooltip:SetPoint(Lunar.Button.tooltipPos[9 - pos], _G["LSSettingsAnchor"], Lunar.Button.tooltipPos[pos]);
-			end
-		end
-	else
-		Lunar.Button.tooltipSetOwner = nil;
-	end
---]]
 end
 
 function Lunar.Button:TooltipOnHide()
-	if (LunarSphereSettings.skinTooltips) then --or (Lunar.Button.tooltipSkinned) then
-		if (LunarSphereSettings.skinAllTooltips ~= true) then --or (LunarSphereSettings.skinTooltips ~= true) then
-			if not Lunar.origBackdrop then
-				Lunar.origBackdrop = GameTooltip:GetBackdrop();
-				Lunar.origBackdropColor = {GameTooltip:GetBackdropColor()};
-				Lunar.origBackdropBorderColor = {GameTooltip:GetBackdropBorderColor()};
-			end
-			GameTooltip:SetBackdrop(Lunar.origBackdrop); --ItemRefTooltip:GetBackdrop()); --Lunar.origBackdrop);
-			GameTooltip:SetBackdropColor(unpack(Lunar.origBackdropColor)); --TOOLTIP_DEFAULT_BACKGROUND_COLOR.r, TOOLTIP_DEFAULT_BACKGROUND_COLOR.g, TOOLTIP_DEFAULT_BACKGROUND_COLOR.b); --unpack(Lunar.origBackdropColor));
-			GameTooltip:SetBackdropBorderColor(unpack(Lunar.origBackdropBorderColor)); --TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
---	else
-
---		GameTooltip:SetBackdrop(backdrop);
---		GameTooltip:SetBackdropColor(unpack(LunarSphereSettings.tooltipBackground));
---		GameTooltip:SetBackdropBorderColor(unpack(LunarSphereSettings.tooltipBorder));
---		Lunar.Button.tooltipSkinned = true;
-		end
+	if (LunarSphereSettings.skinAllTooltips ~= true) and (Lunar.Button.tooltipSkinned) then
+		Lunar.Button:SkinTooltip(false);
 	end
-	Lunar.Button.tooltipSkinned = nil;
---[[
-	if Lunar.Button.tooltipSkinned then
-
-		Lunar.Button.tooltipSkinned = nil;
-		GameTooltip:SetBackdrop(ItemRefTooltip:GetBackdrop()); --Lunar.origBackdrop);
-		GameTooltip:SetBackdropColor(ItemRefTooltip:GetBackdropColor()); --unpack(Lunar.origBackdropColor));
-		GameTooltip:SetBackdropBorderColor(TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b);
-	end
---]]
 end
-
 function Lunar.Button.SetDefaultAnchor(tooltip, parent, ...)
 	if (tooltip == GameTooltip) then
 		if not Lunar.Button.tooltipSetOwner then
@@ -7216,7 +7311,7 @@ function Lunar.Button:SetTooltip(self)
 			itemCount = "";
 			if (buttonType) then
 				if (actionType == "item") then
-					local _, _, _, _, _, _, _, stackTotal, _, _, _, classID = C_Item.GetItemInfo(actionName);
+					local _, _, _, _, _, _, _, stackTotal, _, _, _, classID = Lunar.Compat.GetItemInfo(actionName);
 					-- Make sure we have a stackTotal (meaning, we have it in our in our inventory)
 					-- Then, make sure the item is eligible for showing a count
 					if (stackTotal) then
@@ -7246,7 +7341,7 @@ function Lunar.Button:SetTooltip(self)
 								--print("buttonType (7184):", buttonType, ", ", actionName, ", ", actionType)
 
 								if (actionType == "item") then
-									myGameTooltip:AddLine(buttonName .. (C_Item.GetItemInfo(actionName) or (actionName .. " " .. Lunar.Locale["_NOT_IN_CACHE"]))  .. " " .. itemCount .. keybindText, 1, 1, 1);
+									myGameTooltip:AddLine(buttonName .. (Lunar.Compat.GetItemInfo(actionName) or (actionName .. " " .. Lunar.Locale["_NOT_IN_CACHE"]))  .. " " .. itemCount .. keybindText, 1, 1, 1);
 								else
 									-- Make sure we don't show spell IDs
 									if (actionName == tostring(tonumber(actionName))) then
@@ -7342,7 +7437,7 @@ function Lunar.Button:SetTooltip(self)
 						end
 						myGameTooltip:AddTexture("Interface\\Addons\\LunarSphere\\art\\tooltipMouse" .. index);
 						if not ((actionName == "") or (actionName == "item: ") or (actionName == " ") or (actionName == nil)) then
-							actionName = C_Item.GetItemInfo(actionName);
+							actionName = Lunar.Compat.GetItemInfo(actionName);
 							if (actionName == nil) then
 								myGameTooltip:AddLine(Lunar.Locale["OUT_OF_STOCK"], 1.0, 0, 0);
 							else
@@ -7411,7 +7506,7 @@ function Lunar.Button:SetTooltip(self)
 						if (buttonType < 130) then
 							actionName, actionName2 = string.match(actionName, "/use (.*)\n/use (.*)");
 						else
-							actionName = C_Item.GetItemInfo(GetInventoryItemLink("player", buttonType - 117) or ("")) or ("");
+							actionName = Lunar.Compat.GetItemInfo(GetInventoryItemLink("player", buttonType - 117) or ("")) or ("");
 						end
 						myGameTooltip:AddLine(buttonName .. Lunar.Locale[Lunar.Object.dropdownData["Button_Type"][math.floor(buttonType / 10) + catagoryStart][3] .. (math.fmod(buttonType, 10) + 1)] .. keybindText, 1, 1, 1);
 						myGameTooltip:AddTexture("Interface\\Addons\\LunarSphere\\art\\tooltipMouse" .. index);
@@ -7499,9 +7594,24 @@ function Lunar.Button:UpdateBindingText(button)
 end
 
 function Lunar.getBuffIndex(unitId, spellName)
+	local i, name, aura;
 	for i = 1, 40 do
-		if UnitBuff(unitName, i) == spellName then
-			return i
+		name = nil;
+		if (C_UnitAuras) and (C_UnitAuras.GetBuffDataByIndex) then
+			aura = C_UnitAuras.GetBuffDataByIndex(unitId, i);
+			if (aura) and (issecretvalue(aura) or (issecrettable and issecrettable(aura))) then
+				return false;
+			end
+			name = aura and aura.name;
+		elseif (UnitBuff) then
+			name = UnitBuff(unitId, i);
+		end
+		if (name == nil) then
+			return false;
+		end
+		-- Aura data is secret during combat restrictions on Midnight
+		if (not issecretvalue(name)) and (name == spellName) then
+			return i;
 		end
 	end
 	return false

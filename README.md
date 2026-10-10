@@ -53,12 +53,16 @@ LunarSphere, here you go:
 Just extract a release file in the `Interface\AddOns` folder for the game
 version you're playing:
 
-* Retail (Mainline) : `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns`
-* Classic (Vanilla) : `C:\Program Files (x86)\World of Warcraft\_classic_era_\Interface\AddOns`
-* Burning Crusade classic (TBC): `C:\Program Files (x86)\World of Warcraft\_classic_\Interface\AddOns`
+* Retail (Midnight) : `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns`
+* WoW: Forever (beta) : the `Interface\AddOns` folder of your WoW: Forever installation
+* Classic : `C:\Program Files (x86)\World of Warcraft\_classic_\Interface\AddOns` (or `_classic_era_`)
 
-LunarSphere supports all three clients out-of-the-box, there are no
-client-specific releases.
+Copy both the `LunarSphere` and `LunarSphereExporter` folders. LunarSphere supports
+all clients out-of-the-box, there are no client-specific releases.
+
+See [REMOVED_FEATURES.md](REMOVED_FEATURES.md) for the features that were removed
+or work differently on Midnight and WoW: Forever (mostly because of Midnight's
+in-combat secret values).
 
 ## Features
 
@@ -166,21 +170,23 @@ https://github.com/leonardopsantos/LunarSphere
 It's OK to post bug report on Curse or on Discord. When posting a report,
 please make sure that you inform:
 
-1. Which of the three clients were you using:
-    1. Retail (Mainline) 
-    2. Classic Era (Vanilla)
-    3. Wrath of the Lich King (WotLK)
+1. Which client were you using:
+    1. Retail (Midnight)
+    2. WoW: Forever
+    3. Classic
 2. Which class were you playing
 3. How to trigger the bug/crash
 
 The more specific the report is, the easier for me to find the problem and fix
 it.
 
-## Current Version: 1.66
+## Current Version: 1.80
 
-* Update to WoW 10.1.7 / Dragonflight for LunarSphere
-* Update to WoW 1.14.4 / Classic Era (SoM) for LunarSphere
-* Update to WoW 3.4.3  / WotLK-Classic for LunarSphere
+* Update to WoW 12.1.0 / Midnight (and the 12.1.5 patch)
+* Support for the WoW: Forever beta (1.60.1)
+* Works in combat with Midnight's secret values: gauges, sphere text and spell
+  cooldowns keep updating in combat, and secure menus open and close in combat
+* See [REMOVED_FEATURES.md](REMOVED_FEATURES.md) for what was removed or changed
 
 Updates for LunarSphere are distributed via WowUp and Curseforge. Be sure to
 get the latest version here:

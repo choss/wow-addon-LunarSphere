@@ -1,4 +1,38 @@
 LunarSphere Public Release
+Version 1.80 Changelog
+
+======================
+Feature Changes
+======================
+
+* Updated for World of Warcraft: Midnight (12.1.0 and 12.1.5) and the WoW: Forever beta (1.60.1).
+* LunarSphere works in combat with Midnight's secret values: sphere gauges and sphere text keep
+updating in combat, spell cooldowns use the game's cooldown swipe and countdown numbers, and
+spell cast counts are shown.
+* Menus still open and close in combat, including auto-closing when the mouse leaves a menu
+(now handled by a secure auto-hide frame).
+* Menu bar button types are now secure /click macros, so they work in combat.
+* Two template slots now map to specializations 1 and 2 on retail.
+* The LunarSphere Data Exporter is included again, and importing from LunarSphereExporter.lua works again.
+* Removed or limited features are listed (with the reasons) in REMOVED_FEATURES.md.
+
+======================
+Bug Fixes
+======================
+
+* Replaced every API removed from the game (item, spell book, add-on, map, reputation,
+merchant, gossip, chat and container functions) with the modern C_ versions.
+* Set-up that would change secure buttons in combat (logging in or reloading in combat, template
+switching, best-item updates, hiding Blizzard frames) now waits until combat ends.
+* Hiding Blizzard UI elements works with the Edit Mode frames.
+* Tooltip skinning works with the modern tooltip border.
+* Speech scripts no longer always send to /say when no channel tag is present.
+* Gauge colours for newer power types are no longer reset at every login.
+* Fixed a crash when dragging a battle pet onto a button.
+* Fixed several template, gossip and reagent-restock errors.
+
+=======================================================================================
+LunarSphere Public Release
 Version 1.70 Changelog
 
 * Re-releasing 1.69 as 1.70 because CurseForge is stupid.

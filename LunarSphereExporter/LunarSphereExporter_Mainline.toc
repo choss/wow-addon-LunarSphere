@@ -1,0 +1,16 @@
+## Interface: 120100, 120105, 16001
+##
+## Title: LunarSphere Data Exporter
+##
+## Version: v1.80
+##
+## Notes: Handles the exporting of data from LunarSphere so other users can import said data.
+##
+## Author: Moongaze (Twisting Nether)
+## IconTexture: Interface\AddOns\LunarSphere\Art\sphere
+##
+## Dependencies: LunarSphere
+## LoadOnDemand: 1
+## SavedVariables: LunarSphereExport
+
+LunarSphereExport.lua

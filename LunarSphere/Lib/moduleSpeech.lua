@@ -54,9 +54,20 @@ speechLibrary[>4 ] = speech text. If nil, and the index is within range of the s
 
 -- Create our some local databases
 
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
+-- Client API compatibility (see moduleCompat.lua)
+local Compat = Lunar.Compat;
+local GetSpellInfo = Compat.GetSpellInfo;
+local IsAddOnLoaded = Compat.IsAddOnLoaded;
+local LoadAddOn = Compat.LoadAddOn;
+
+-- Unit names can be secret values on Midnight (in combat / restricted content). Speech
+-- text can't contain secrets, so we fall back to an empty name in that case.
+local function SafeUnitName(unit)
+	local name = UnitName(unit);
+	if Compat.IsSecret(name) then
+		return nil;
+	end
+	return name;
 end
 
 --local speechDatabase	= {};	-- Deals with scripts and speeches in the library that are full of default data
@@ -186,21 +197,25 @@ function Lunar.Speech.OnEvent(self, event, unit, target, castGUID, spellID)
 
 	-- Ignore all spells that are not from the player
 
-	if (unit ~= "player") then
+	if (Compat.IsSecret(unit)) or (unit ~= "player") then
 		return;
 	end
 
 	-- If the player starts to cast a spell, notate that a spell is being cast
-	-- and grab the currently active spell of the player. This is needed in 
+	-- and grab the currently active spell of the player. This is needed in
 	-- order to catch spells that have a cast time.
 
 	if (event == "UNIT_SPELLCAST_SENT") then
+		if Compat.AnySecret(spellID, target) then
+			self.spellName, self.spellRank, self.spellTarget = nil, nil, nil;
+			return;
+		end
 		self.spellName, self.spellRank = GetSpellInfo(spellID);
 		self.spellTarget = target;
 
 		-- If the target data doesn't exist, grab it from the player target if possible
-		if ((not target or (target == "")) and UnitName("target")) then
-			self.spellTarget = UnitName("target") or ("");
+		if ((not target or (target == "")) and SafeUnitName("target")) then
+			self.spellTarget = SafeUnitName("target") or ("");
 		end
 	end
 
@@ -316,9 +331,9 @@ function Lunar.Speech:Export(wipeOldData, scriptID)
 
 	-- Check to see if the exporter is loaded. If not, load it up
 	local theReason;
-	local isLoaded = IsAddOnLoaded("LunarSphereExporter");
+	local isLoaded = Lunar.Compat.IsAddOnLoaded("LunarSphereExporter");
 	if ( not isLoaded ) then
-		isLoaded, theReason = LoadAddOn("LunarSphereExporter");
+		isLoaded, theReason = Lunar.Compat.LoadAddOn("LunarSphereExporter");
 	end
 
 	-- If it was successfully loaded, run the exporter and export our data.
@@ -876,8 +891,8 @@ function Lunar.Speech.ParseSpeech(self, speech)
 
 	local soundFile;
 
-	speech = string.gsub(speech, "<target>", (self.spellTarget or UnitName("target") or ("")));
-	speech = string.gsub(speech, "<focus>", (UnitName("focus") or self.spellTarget or UnitName("target") or ""));
+	speech = string.gsub(speech, "<target>", (self.spellTarget or SafeUnitName("target") or ("")));
+	speech = string.gsub(speech, "<focus>", (SafeUnitName("focus") or self.spellTarget or SafeUnitName("target") or ""));
 	if string.find(speech, "<mount>") then
 		-- Wipe the "summon" from the name, if it exists, for all locales (in theory)
 		local spellName, spellRank = Lunar.API:GetSpellBookItemName(self.spellName)
@@ -891,8 +906,8 @@ function Lunar.Speech.ParseSpeech(self, speech)
 		speech = string.gsub(speech, "<mount>", (spellName or ("")));
 	end
 	speech = string.gsub(speech, "<spell>", (self.spellName or ("")));
-	speech = string.gsub(speech, "<player>", (UnitName("player") or ("")));
-	speech = string.gsub(speech, "<pet>", (UnitName("pet") or ("")));
+	speech = string.gsub(speech, "<player>", (SafeUnitName("player") or ("")));
+	speech = string.gsub(speech, "<pet>", (SafeUnitName("pet") or ("")));
 
 	if string.find(speech, "<portal>") then
 		speech = string.gsub(speech, "<portal>", strtrim(string.match(self.spellName, ":(.*)") or ("")));
@@ -915,14 +930,11 @@ function Lunar.Speech.ParseSpeech(self, speech)
 		PlaySoundFile(soundFile);
 	end
 
-	local forceChannel = "SAY";
+	-- A tag in the speech forces the channel. Without a tag, the script's channel is used.
+	local forceChannel = nil;
 	if string.find(speech, "<say>") then
 		speech = string.gsub(speech, "<say>", "");
 		forceChannel = "SAY";
-		if not IsInInstance() then
-			speech = 'says, "'..speech..'"'
-			forceChannel = "EMOTE"
-		end
 	elseif string.find(speech, "<yell>") then
 		speech = string.gsub(speech, "<yell>", "");
 		forceChannel = "YELL";
@@ -938,10 +950,6 @@ function Lunar.Speech.ParseSpeech(self, speech)
 	elseif string.find(speech, "<whisper>") then
 		speech = string.gsub(speech, "<whisper>", "");
 		forceChannel = "WHISPER";
-	-- SendChatMessage() requires a hardware event if outside, so EMOTE instead
-	elseif not IsInInstance() then
-		speech = 'says, "'..speech..'"'
-		forceChannel = "EMOTE"
 	end
 
 	return speech, forceChannel;
@@ -1026,7 +1034,7 @@ function Lunar.Speech.RunScript(self, scriptName)
 			if (channel == "ANY") or (channel == "ANYGROUP") then
 				if UnitInRaid("player") then
 					channel = "RAID";
-				elseif (GetNumPartyMembers() > 0) then
+				elseif (GetNumSubgroupMembers() > 0) then
 					channel = "PARTY";
 				else
 					if (channel == "ANY") then
@@ -1084,13 +1092,25 @@ function Lunar.Speech.RunScript(self, scriptName)
 					if (speechLine) then
 
 						speechLine, forceChannel = Lunar.Speech.ParseSpeech(self, speechLine);
-						if ((channel == "WHISPER") and not forceChannel) or (forceChannel == "WHISPER") then
-							local whisperTarget = self.spellTarget or UnitName("target");
-							if (whisperTarget) ~= "" then
-								SendChatMessage(speechLine, "WHISPER", nil, whisperTarget);
+						local sendChannel = forceChannel or channel;
+						if (sendChannel == "WHISPER") then
+							local whisperTarget = self.spellTarget or SafeUnitName("target");
+							if (whisperTarget) and (whisperTarget ~= "") then
+								Compat.SendChatMessage(speechLine, "WHISPER", nil, whisperTarget);
 							end
 						else
-							SendChatMessage(speechLine, forceChannel or channel);
+							-- Add-ons can only /say and /yell inside instances unless the
+							-- message comes from a key press, so outside of instances we
+							-- turn those into an emote instead.
+							if ((sendChannel == "SAY") or (sendChannel == "YELL")) and (not IsInInstance()) then
+								if (sendChannel == "YELL") then
+									speechLine = 'yells, "' .. speechLine .. '"';
+								else
+									speechLine = 'says, "' .. speechLine .. '"';
+								end
+								sendChannel = "EMOTE";
+							end
+							Compat.SendChatMessage(speechLine, sendChannel);
 						end
 					end
 				end

@@ -1,0 +1,15 @@
+## Interface: 40401, 11504
+##
+## Title: LunarSphere Data Exporter
+##
+## Version: v1.80
+##
+## Notes: Handles the exporting of data from LunarSphere so other users can import said data.
+##
+## Author: Moongaze (Twisting Nether)
+##
+## Dependencies: LunarSphere
+## LoadOnDemand: 1
+## SavedVariables: LunarSphereExport
+
+LunarSphereExport.lua

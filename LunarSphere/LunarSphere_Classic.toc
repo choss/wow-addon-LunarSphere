@@ -30,6 +30,7 @@
 ## SavedVariables: LunarSphereGlobal
 ## SavedVariablesPerCharacter: LunarSphereSettings, LunarSpeechLibrary
 
+lib\moduleCompat.lua
 lib\moduleLocale.lua
 lib\moduleMemory.lua
 lib\moduleAPI.lua
@@ -41,5 +42,6 @@ lib\moduleObject.lua
 lib\moduleSettings.lua
 lib\moduleSpeech.lua
 lib\templatesObject.xml
+LunarSphereExporter.lua
 LunarSphere.lua
 LunarSphere.xml

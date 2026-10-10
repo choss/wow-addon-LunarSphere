@@ -126,10 +126,12 @@ Lunar.includedGauges = 6;
 
 local playerLoginCheck = {};
 
-local GetSpellInfo = GetSpellInfo
-if C_Spell.GetSpellInfo then
-	GetSpellInfo = Lunar.API:Deconfabulate(C_Spell.GetSpellInfo)
-end
+-- Client API compatibility (see Lib\moduleCompat.lua)
+local Compat = Lunar.Compat;
+local GetSpellInfo = Compat.GetSpellInfo;
+local GetSpellTabInfo = Compat.GetSpellTabInfo;
+local GetItemInfo = Compat.GetItemInfo;
+local GetActionText = Compat.GetActionText;
 
 -- /***********************************************
 --   LunarSphere Functions
@@ -167,6 +169,27 @@ end
 --  *********************/
 function LunarSphere_OnEvent(self, event)
 
+	-- The sphere and its buttons are secure frames. If the UI was reloaded while in
+	-- combat we can't configure them yet, so we queue the start-up events until the
+	-- player leaves combat.
+	if ((event == "VARIABLES_LOADED") or (event == "PLAYER_LOGIN")) and InCombatLockdown() then
+		self.pendingEvents = self.pendingEvents or {};
+		table.insert(self.pendingEvents, event);
+		self:RegisterEvent("PLAYER_REGEN_ENABLED");
+		return;
+	end
+
+	if (event == "PLAYER_REGEN_ENABLED") then
+		self:UnregisterEvent("PLAYER_REGEN_ENABLED");
+		local pendingEvents = self.pendingEvents or {};
+		local handler = LunarSphere_OnEvent;
+		self.pendingEvents = nil;
+		for _, pendingEvent in ipairs(pendingEvents) do
+			handler(self, pendingEvent);
+		end
+		return;
+	end
+
 	-- If we just loaded up...
 	if (event == "VARIABLES_LOADED") then
 
@@ -182,11 +205,10 @@ function LunarSphere_OnEvent(self, event)
 		if (not Lunar.varLoaded) then
 			LunarSphere_VariablesLoaded();
 		end
-		-- Load up our exporter and get our export database ready
-		local isLoaded = C_AddOns.IsAddOnLoaded("LunarSphereExporter");
-		if ( not isLoaded ) then
-			C_AddOns.EnableAddOn("LunarSphereExporter") 
-			isLoaded = C_AddOns.LoadAddOn("LunarSphereExporter");
+		-- Load up our exporter and get our export database ready (only if the user
+		-- has it enabled, we no longer force-enable it)
+		if (not Compat.IsAddOnLoaded("LunarSphereExporter")) and Compat.IsAddOnEnabled("LunarSphereExporter") then
+			pcall(Compat.LoadAddOn, "LunarSphereExporter");
 		end
 		
 		if (Lunar.Settings.BuildTemplateList) then
@@ -265,8 +287,10 @@ function LunarSphere_OnEvent(self, event)
 
 --		Lunar.API:SetupGuildRepairDialog()
 
-		hooksecurefunc(getmetatable(GameTooltip).__index, "SetOwner", Lunar.Button.TooltipSetOwner);
-		hooksecurefunc(getmetatable(GameTooltip).__index, "Show", Lunar.Button.TooltipOnShow);
+		-- Only hook the GameTooltip itself (not the shared tooltip metatable, which would
+		-- run our code for every tooltip in the game)
+		hooksecurefunc(GameTooltip, "SetOwner", Lunar.Button.TooltipSetOwner);
+		hooksecurefunc(GameTooltip, "Show", Lunar.Button.TooltipOnShow);
 --		hooksecurefunc(GameTooltip, "SetOwner", Lunar.Button.TooltipSetOwner);
 --		hooksecurefunc(GameTooltip, "Show", Lunar.Button.TooltipOnShow);
 --		hooksecurefunc(GameTooltip, "ClearLines", Lunar.Button.TooltipOnShow);
@@ -338,16 +362,6 @@ function LunarSphere_OnEvent(self, event)
 		
 		if (LunarSphereSettings.debugMinimapTexture) then
 			Lunar.Sphere:MinimapTest()
-		end
-		
-		a = {}
-		
-		-- Croq added a check to see if IO was empty
-		if not io == nil then
-			for line in io.lines() do
-			  table.insert(a, line)
-			end
-			print(table.getn(a))         --> (number of lines read)
 		end
 	end
 end
@@ -1541,7 +1555,7 @@ function LunarSphere_BackwardsCompatibility()
 	
 	-- Set this to the correct version before release
 	if (LunarSphereSettings.versionID < 1.52) then
-		-- LunarSphereSettings.versionID = 1.52;
+		LunarSphereSettings.versionID = 1.52;
 		LunarSphereSettings.fooled = nil;
 		LunarSphereSettings.gaugeColor[LS_EVENT_COMBO] = Lunar.Sphere:GetGaugeColorDefaultSettings(LS_EVENT_COMBO);
 		LunarSphereSettings.gaugeColor[LS_EVENT_FURY] = Lunar.Sphere:GetGaugeColorDefaultSettings(LS_EVENT_FURY);
