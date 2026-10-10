@@ -1,0 +1,82 @@
+# Builds a WowUp compatible zip on every push and publishes it as a GitHub release.
+# WowUp installs GitHub addons from release assets and uses release.json to pick the
+# zip for each game flavor.
+name: Build zip
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gets git history for changelogs
+
+      # -d: package only, don't upload anywhere (the release is created below)
+      - name: Package
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+
+      - name: Write release.json
+        id: meta
+        run: |
+          zip=$(ls .release/*.zip | grep -v -- '-nolib' | head -n 1)
+          name=$(basename "$zip")
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          python3 - "$name" > .release/release.json <<'EOF'
+          import json, re, sys
+
+          def interfaces(path):
+              with open(path, encoding='utf-8-sig') as f:
+                  m = re.search(r'^## Interface:\s*(.+)$', f.read(), re.M)
+              return [int(v) for v in re.findall(r'\d+', m.group(1))] if m else []
+
+          def flavor(interface):
+              if interface >= 100000:
+                  return 'mainline'
+              return {1: 'classic', 2: 'bcc', 3: 'wrath', 4: 'cata', 5: 'mists'}.get(interface // 10000)
+
+          metadata = []
+          # The Mainline TOC also lists the WoW: Forever interface (1.6x), which isn't a
+          # classic flavor, so only take mainline interfaces from it.
+          for interface in interfaces('LunarSphere/LunarSphere_Mainline.toc'):
+              if flavor(interface) == 'mainline':
+                  metadata.append({'flavor': 'mainline', 'interface': interface})
+                  break
+          for interface in interfaces('LunarSphere/LunarSphere_Classic.toc'):
+              f = flavor(interface)
+              if f and f != 'mainline' and all(m['flavor'] != f for m in metadata):
+                  metadata.append({'flavor': f, 'interface': interface})
+
+          print(json.dumps({'releases': [{
+              'name': 'LunarSphere',
+              'version': sys.argv[1][len('LunarSphere-'):-len('.zip')],
+              'filename': sys.argv[1],
+              'nolib': False,
+              'metadata': metadata,
+          }]}, indent=2))
+          EOF
+          cat .release/release.json
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: LunarSphere ${{ github.ref_name }} build ${{ github.run_number }} (${{ github.sha }})
+          body: Automatic build of ${{ github.ref_name }} at ${{ github.sha }}.
+          files: |
+            ${{ steps.meta.outputs.zip }}
+            .release/release.json
