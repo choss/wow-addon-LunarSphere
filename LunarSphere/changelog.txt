@@ -2,7 +2,7 @@ LunarSphere Public Release
 Version 1.80 Changelog (Claude Edition)
 
 This version was ported by Claude Code, Anthropic's AI coding agent, and is being tested
-in game by choss. See README.md and REMOVED_FEATURES.md.
+in game by Tamuko. See README.md and REMOVED_FEATURES.md.
 
 ======================
 Feature Changes
