@@ -1,14 +1,22 @@
 # LunarSphere: Claude Edition
 
 A port of LunarSphere to **World of Warcraft: Midnight** (12.1.x) and the
-**WoW: Forever** beta (1.60.1), made with Claude (Anthropic's AI assistant).
+**WoW: Forever** beta (1.60.1), written by **Claude Code**, Anthropic's AI coding
+agent.
 
 Originally by: Moongaze
 Taken over by: N3od3ath, Toludin-Stormrage
 Fan update by: Fullmoon/Thundermoo/Bloodyaxe-Sulfuras & voyseys
-Claude Edition: ported by Claude for [choss](https://github.com/choss/wow-addon-LunarSphere)
+Claude Edition: ported by Claude Code, tested in game by
+[choss](https://github.com/choss/wow-addon-LunarSphere)
 
 ## About the Claude Edition
+
+To be upfront about it: the code changes in this edition were made by Claude
+Code, an AI agent, not written by hand. Claude Code had no game client, so it
+worked from Blizzard's UI source and API documentation and a test harness it
+built, and choss tests the result in game and reports back what doesn't work.
+Expect bugs that only show up in game, and please report them.
 
 This edition is based on the LunarSphere fan update (1.70). Midnight changed a
 lot of the game's add-on API and added in-combat "secret values" that add-ons
