@@ -23,6 +23,9 @@ Bug Fixes
 
 * Fixed clicks on buttons and the sphere doing nothing: an empty "unit" attribute made the game
 drop every click (the client ignores a click when the button's unit doesn't exist).
+* Fixed buttons not casting or using anything when clicked: on Midnight and WoW: Forever the
+action button template's flyout click handler replaced the secure click handler.
+* Fixed the "File LunarSphereExporter.lua is empty" warning.
 * Fixed trinket, mount, food/drink, equipment set and menu bar buttons (all macro-text actions)
 doing nothing when clicked: an empty macro attribute stopped the macro text from running.
 * Fixed main buttons keeping their old action after being changed in the button settings

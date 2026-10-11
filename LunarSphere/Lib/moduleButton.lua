@@ -1346,10 +1346,14 @@ function Lunar.Button:Create(name, parent, includeHeader)
 	-- Create our locals, create the name of the button, and create the button
 	local name = "Lunar" .. name .. "Button";
 	local button;
+	-- SecureActionButtonTemplate must come last: the last template's scripts win, and on
+	-- modern clients ActionButtonTemplate inherits FlyoutButtonTemplate, whose OnClick
+	-- (Flyout_OnClick) would otherwise replace the secure click handler, so clicks would
+	-- never cast, use or run anything.
 	if (includeHeader) then
-		button = CreateFrame("CheckButton", name, parent, "SecureActionButtonTemplate, ActionButtonTemplate, SecureHandlerClickTemplate, SecureHandlerStateTemplate, SecureHandlerEnterLeaveTemplate");
+		button = CreateFrame("CheckButton", name, parent, "ActionButtonTemplate, SecureHandlerClickTemplate, SecureHandlerStateTemplate, SecureHandlerEnterLeaveTemplate, SecureActionButtonTemplate");
 	else
-		button = CreateFrame("CheckButton", name, parent, "SecureActionButtonTemplate, ActionButtonTemplate"); --, SecureHandlerClickTemplate, SecureHandlerEnterLeaveTemplate, SecureHandlerShowHideTemplate, ActionButtonTemplate")
+		button = CreateFrame("CheckButton", name, parent, "ActionButtonTemplate, SecureActionButtonTemplate");
 	end
 
 	-- Make our new button accept mouse clicks
