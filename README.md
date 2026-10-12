@@ -7,10 +7,9 @@ agent.
 Originally by: Moongaze
 Taken over by: N3od3ath, Toludin-Stormrage
 Fan update by: Fullmoon/Thundermoo/Bloodyaxe-Sulfuras & voyseys
-Claude Edition: ported by Claude Code, tested in game by
-[Tamuko](https://github.com/choss/wow-addon-LunarSphere)
+AI Edition: ported by Claude Code, tested in game by [Tamuko](https://github.com/choss/wow-addon-LunarSphere)
 
-## About the Claude Edition
+## About the AI Edition
 
 To be upfront about it: the code changes in this edition were made by Claude
 Code, an AI agent, not written by hand. Claude Code had no game client, so it
