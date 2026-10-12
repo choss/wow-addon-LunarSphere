@@ -41,6 +41,10 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # CurseForge shows a changelog per file: use only the newest version's section
+      # of LunarSphere/changelog.txt (sections end with a long line of '=')
+      - name: Extract changelog for this version
+        run: sed '/^=\{40,\}$/,$d' LunarSphere/changelog.txt > CURSEFORGE_CHANGELOG.txt
       # Untagged commits are packaged as alpha and uploaded to CurseForge
       - name: Package and upload alpha
         if: steps.tags.outputs.skip != 'true'

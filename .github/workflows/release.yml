@@ -40,5 +40,9 @@ jobs:
       - name: Ignore build tags
         run: git tag -l 'build-*' | xargs -r git tag -d
 
+      # CurseForge shows a changelog per file: use only the newest version's section
+      # of LunarSphere/changelog.txt (sections end with a long line of '=')
+      - name: Extract changelog for this version
+        run: sed '/^=\{40,\}$/,$d' LunarSphere/changelog.txt > CURSEFORGE_CHANGELOG.txt
       - name: Package and release
         uses: BigWigsMods/packager@v2
