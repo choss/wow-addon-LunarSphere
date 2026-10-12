@@ -1,4 +1,4 @@
-# LunarSphere: Claude Edition
+# LunarSphere: AI Edition
 
 A port of LunarSphere to **World of Warcraft: Midnight** (12.1.x) and the
 **WoW: Forever** beta (1.60.1), written by **Claude Code**, Anthropic's AI coding
