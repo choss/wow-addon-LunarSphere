@@ -30,6 +30,8 @@
 ## IconTexture: Interface\AddOns\LunarSphere\Art\sphere
 ## Category: Action Bars
 ##
+## X-Curse-Project-ID: 1740701
+##
 ## SavedVariables: LunarSphereGlobal
 ## SavedVariablesPerCharacter: LunarSphereSettings, LunarSpeechLibrary
 

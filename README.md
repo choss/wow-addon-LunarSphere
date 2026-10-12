@@ -95,13 +95,16 @@ template again).
 
 ### With WowUp
 
-Every push to this repository builds a zip and publishes it as a GitHub
-release, with the `release.json` file WowUp uses to pick the right files.
+Version tags (for example `v1.81`) are published as releases, on CurseForge and
+as GitHub releases. Every other push is published as an **alpha**: a CurseForge
+alpha file and a GitHub pre-release. Each GitHub release includes the
+`release.json` file WowUp uses to pick the right files.
 
 1. In WowUp, choose **Get Addons → Install from URL**.
 2. Enter `https://github.com/choss/wow-addon-LunarSphere`.
 
-WowUp then picks up new builds from the repository's releases.
+WowUp then picks up new releases from the repository. To get the alpha
+builds as well, switch the add-on to the beta/alpha channel in WowUp.
 
 ### Manually
 

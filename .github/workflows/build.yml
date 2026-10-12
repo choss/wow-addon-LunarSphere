@@ -1,7 +1,8 @@
-# Builds a WowUp compatible zip on every push and publishes it as a GitHub release.
-# WowUp installs GitHub addons from release assets and uses release.json to pick the
-# zip for each game flavor.
-name: Build zip
+# Alpha builds: runs on every branch push.
+# Uploads the build to CurseForge as an alpha and publishes it as a GitHub
+# pre-release (with release.json, so WowUp users on the beta/alpha channel get it).
+# Tagged commits are handled by release.yml instead.
+name: Build alpha
 
 on:
   push:
@@ -16,30 +17,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # CF_API_KEY is an environment secret of the "Build" environment
+    environment: Build
+
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+
     steps:
       - name: Clone project
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # gets git history for changelogs
 
-      # -d: package only, don't upload anywhere (the release is created below)
-      - name: Package
+      # Our own build-N tags would otherwise show up in the version name
+      # (LunarSphere-build-2-1-g<sha>.zip). A commit with a version tag is released
+      # by release.yml, so skip it here to avoid uploading it twice.
+      - name: Check tags
+        id: tags
+        run: |
+          git tag -l 'build-*' | xargs -r git tag -d
+          if [ -n "$(git tag --points-at HEAD)" ]; then
+            echo "HEAD has a version tag, release.yml handles this commit."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Untagged commits are packaged as alpha and uploaded to CurseForge
+      - name: Package and upload alpha
+        if: steps.tags.outputs.skip != 'true'
         uses: BigWigsMods/packager@v2
-        with:
-          args: -d
 
       - name: Write release.json
         id: meta
+        if: steps.tags.outputs.skip != 'true'
         run: |
-          # The packager names the zip after `git describe`, which picks up our own
-          # build-N tags (LunarSphere-build-2-1-g<sha>.zip). Name it ourselves instead:
-          # <TOC version>-build<run number>-<short sha>
-          toc_version=$(grep -m1 '^## Version:' LunarSphere/LunarSphere_Mainline.toc | sed 's/^## Version:[[:space:]]*//; s/[[:space:]]*$//')
-          name="LunarSphere-${toc_version}-build${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}.zip"
-          packaged=$(ls .release/*.zip | grep -v -- '-nolib' | head -n 1)
-          zip=".release/$name"
-          mv "$packaged" "$zip"
+          zip=$(ls .release/*.zip | grep -v -- '-nolib' | head -n 1)
+          name=$(basename "$zip")
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          echo "version=${name#LunarSphere-}" | sed 's/\.zip$//' >> "$GITHUB_OUTPUT"
           echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           python3 - "$name" > .release/release.json <<'EOF'
           import json, re, sys
@@ -55,8 +69,6 @@ jobs:
               return {1: 'classic', 2: 'bcc', 3: 'wrath', 4: 'cata', 5: 'mists'}.get(interface // 10000)
 
           metadata = []
-          # The Mainline TOC also lists the WoW: Forever interface (1.6x), which isn't a
-          # classic flavor, so only take mainline interfaces from it.
           for interface in interfaces('LunarSphere/LunarSphere_Mainline.toc'):
               if flavor(interface) == 'mainline':
                   metadata.append({'flavor': 'mainline', 'interface': interface})
@@ -76,13 +88,16 @@ jobs:
           EOF
           cat .release/release.json
 
-      - name: Publish release
+      - name: Publish GitHub pre-release
+        if: steps.tags.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: LunarSphere ${{ github.ref_name }} build ${{ github.run_number }} (${{ github.sha }})
-          body: Automatic build of ${{ github.ref_name }} at ${{ github.sha }}.
+          name: LunarSphere ${{ steps.meta.outputs.version }} (alpha, ${{ github.ref_name }})
+          body: Alpha build of ${{ github.ref_name }} at ${{ github.sha }}.
+          prerelease: true
+          make_latest: false
           files: |
             ${{ steps.meta.outputs.zip }}
             .release/release.json

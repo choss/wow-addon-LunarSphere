@@ -27,6 +27,8 @@
 ## Title-esMX: LunarSphere v.1.70
 ## Notes-esMX: A universal sphere for all classes
 ##
+## X-Curse-Project-ID: 1740701
+##
 ## SavedVariables: LunarSphereGlobal
 ## SavedVariablesPerCharacter: LunarSphereSettings, LunarSpeechLibrary
 
