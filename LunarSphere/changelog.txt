@@ -16,6 +16,8 @@ spell cast counts are shown.
 * Menus still open and close in combat, including auto-closing when the mouse leaves a menu
 (now handled by a secure auto-hide frame).
 * Menu bar button types are now secure /click macros, so they work in combat.
+* Buttons holding crafted items (potions, flasks, food...) show the crafting quality badge, like
+the default action bars.
 * Two template slots now map to specializations 1 and 2 on retail.
 * The LunarSphere Data Exporter is included again, and importing from LunarSphereExporter.lua works again.
 * Removed or limited features are listed (with the reasons) in REMOVED_FEATURES.md.

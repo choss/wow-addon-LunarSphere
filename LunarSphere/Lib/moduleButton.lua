@@ -5774,6 +5774,100 @@ end
 --  * Returns: none
 --  *********************
 function Lunar.Button:UpdateCount(self)
+	local qualityItem = Lunar.Button:UpdateItemCount(self);
+	Lunar.Button:UpdateProfessionQuality(self, qualityItem);
+end
+
+-- /***********************************************
+--  * Crafting quality badge
+--  * ========================
+--  *
+--  * Shows the profession quality (rank) badge on buttons that hold a crafted item, like
+--  * the default action bars do. Uses the same lookup as the default bag buttons:
+--  * reagent quality first, then crafted quality.
+--  *********************
+
+-- Returns an item link for the item a button shows. Buttons that use an item by name
+-- show the rank of the first matching stack in the bags.
+function Lunar.Button:GetQualityItemLink(item)
+	if (type(item) ~= "string") or (item == "") or (item == " ") then
+		return nil;
+	end
+	if string.find(item, "item:%d+") then
+		return item;
+	end
+
+	local _, link = Lunar.Compat.GetItemInfo(item);
+	if (not link) or (not Lunar.Button:GetProfessionQualityInfo(link)) then
+		-- Not an item with crafting ranks: no need to search the bags
+		return link;
+	end
+
+	local lastBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4;
+	local bag, slot, bagLink;
+	for bag = 0, lastBag do
+		for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
+			bagLink = C_Container.GetContainerItemLink(bag, slot);
+			if (bagLink) and (Lunar.Compat.GetItemInfo(bagLink) == item) then
+				return bagLink;
+			end
+		end
+	end
+	return link;
+end
+
+function Lunar.Button:GetProfessionQualityInfo(itemLink)
+	if not (itemLink and C_TradeSkillUI and C_TradeSkillUI.GetItemReagentQualityInfo) then
+		return nil;
+	end
+	local qualityInfo = C_TradeSkillUI.GetItemReagentQualityInfo(itemLink);
+	if (not qualityInfo) and C_TradeSkillUI.GetItemCraftedQualityInfo then
+		qualityInfo = C_TradeSkillUI.GetItemCraftedQualityInfo(itemLink);
+	end
+	if (qualityInfo) and (qualityInfo.iconInventory) then
+		return qualityInfo;
+	end
+	return nil;
+end
+
+function Lunar.Button:UpdateProfessionQuality(button, item)
+
+	-- The sphere itself has no icon to put the badge on
+	if (button:GetID() == 0) then
+		return;
+	end
+
+	local qualityInfo = Lunar.Button:GetProfessionQualityInfo(Lunar.Button:GetQualityItemLink(item));
+	if (not qualityInfo) then
+		if (button.professionQuality) then
+			button.professionQuality:Hide();
+		end
+		return;
+	end
+
+	if (not button.professionQuality) then
+		local frame = CreateFrame("Frame", nil, button);
+		frame:SetSize(1, 1);
+		frame:SetFrameLevel(button:GetFrameLevel() + 5);
+		frame.texture = frame:CreateTexture(nil, "OVERLAY");
+		frame.texture:SetPoint("CENTER");
+		button.professionQuality = frame;
+	end
+
+	-- Same placement and size as the default 45px action buttons, scaled to our button
+	local frame = button.professionQuality;
+	local scale = (button:GetHeight() or 36) / 45;
+	frame:ClearAllPoints();
+	frame:SetPoint("CENTER", button, "TOPLEFT", 14 * scale, -14 * scale);
+	frame.texture:SetAtlas(qualityInfo.iconInventory, true);
+	local width, height = frame.texture:GetSize();
+	frame.texture:SetSize(width * scale, height * scale);
+	frame:Show();
+end
+
+-- Updates the count text of a button. Returns the item the button shows (name or link),
+-- if it holds one.
+function Lunar.Button:UpdateItemCount(self)
 
 	if (not self.actionTypeCount) then
 		if (self:GetID() == 0) then
@@ -5871,6 +5965,13 @@ function Lunar.Button:UpdateCount(self)
 						
 			end
 
+			-- The item this button shows, for the crafting quality badge (trinket
+			-- buttons use the equipped item)
+			local qualityItem = actionName;
+			if (actionType == "macrotext") and ((self.buttonType == 130) or (self.buttonType == 131)) then
+				qualityItem = GetInventoryItemLink("player", self.buttonType - 117);
+			end
+
 			-- Obtain the stackTotal that the item can have
 			local stackTotal, objectMainType, objectType, itemLink, itemID, itemCount;
 			_, itemLink, _, _, _, objectMainType, objectType, stackTotal = Lunar.Compat.GetItemInfo(actionName);
@@ -5945,8 +6046,10 @@ function Lunar.Button:UpdateCount(self)
 					_G[self:GetName() .. "Count"]:SetText(0);
 				end
 			end
+
+			return qualityItem;
 		end
-			
+
 	end
 
 end
