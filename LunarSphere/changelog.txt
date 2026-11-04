@@ -26,6 +26,9 @@ Bug Fixes
 
 * Fixed clicks on buttons and the sphere doing nothing: an empty "unit" attribute made the game
 drop every click (the client ignores a click when the button's unit doesn't exist).
+* Fixed "use strongest/weakest mana potion" and healing potion buttons not finding modern potions
+(e.g. Lightfused Mana Potion): they cast a spell named after the potion instead of "Restore Mana",
+so potions are now also recognised by what their spell restores.
 * Fixed buttons not casting or using anything when clicked: on Midnight and WoW: Forever the
 action button template's flyout click handler replaced the secure click handler.
 * Fixed the "File LunarSphereExporter.lua is empty" warning.

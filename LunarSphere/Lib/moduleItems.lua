@@ -2056,6 +2056,70 @@ function Lunar.Items:GetItemType(index)
 	return searchData[index];
 end
 
+-- /***********************************************
+--  * GetPotionRestoreTypes
+--  * ========================
+--  *
+--  * Modern potions (Dragonflight and later, e.g. Midnight's "Lightfused Mana Potion")
+--  * cast a spell named after the potion instead of the old "Healing Potion" /
+--  * "Restore Mana" spells, so they can't be recognised by spell name. Instead we
+--  * check that the item is a potion and look at what its spell description says it
+--  * restores, using the client's localized MANA / HEALTH strings.
+--  *
+--  * Accepts: itemLink
+--  * Returns: restoresHealth, restoresMana
+--  *********************
+local potionSpellRequests = {};
+
+function Lunar.Items:GetPotionRestoreTypes(itemLink)
+
+	if not (itemLink and C_Item and C_Item.GetItemInfoInstant and C_Spell and C_Spell.GetSpellDescription) then
+		return;
+	end
+
+	local potionClass = (Enum.ItemClass and Enum.ItemClass.Consumable) or 0;
+	local potionSubClass = (Enum.ItemConsumableSubclass and Enum.ItemConsumableSubclass.Potion) or 1;
+	local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemLink);
+	if (classID ~= potionClass) or (subClassID ~= potionSubClass) then
+		return;
+	end
+
+	local _, spellID = Lunar.Compat.GetItemSpell(itemLink);
+	if not (spellID) then
+		return;
+	end
+
+	local description = C_Spell.GetSpellDescription(spellID);
+	if Lunar.Compat.IsSecret(description) then
+		return;
+	end
+
+	-- The spell text may not be loaded yet. Ask for it and rescan the bags shortly
+	-- (a few times at most, in case it never loads).
+	if (not description) or (description == "") then
+		potionSpellRequests[spellID] = (potionSpellRequests[spellID] or 0) + 1;
+		if (potionSpellRequests[spellID] <= 3) and C_Timer and C_Timer.After then
+			if (C_Spell.RequestLoadSpellData) then
+				C_Spell.RequestLoadSpellData(spellID);
+			end
+			C_Timer.After(2, function()
+				local bagID;
+				for bagID = 0, 4 do
+					Lunar.Items["updateContainer" .. bagID] = true;
+				end
+				Lunar.Items.bagUpdateTimer = 0.1;
+			end);
+		end
+		return;
+	end
+
+	description = string.lower(description);
+	local restoresHealth = (HEALTH ~= nil) and (string.find(description, string.lower(HEALTH), 1, true) ~= nil);
+	local restoresMana = (MANA ~= nil) and (string.find(description, string.lower(MANA), 1, true) ~= nil);
+
+	return restoresHealth, restoresMana;
+end
+
 function Lunar.Items:FindItemInCatagory(catagory, itemName)
 	local index, found;
 
@@ -2636,6 +2700,18 @@ function Lunar.Items:UpdateBagContents(bagID, updateType)
 						-- Whipper Root Tuber
 						elseif (itemID == 11951) then
 							Lunar.Items:ModifyItemDataTable("potionHealing", updateType, itemName, itemCount, 50, itemMinLevel, itemLink);
+
+						-- Modern potions cast a spell named after the potion (e.g. "Lightfused
+						-- Mana Potion"), so the spell name checks above miss them. Recognise them
+						-- by what their spell restores instead.
+						else
+							local restoresHealth, restoresMana = Lunar.Items:GetPotionRestoreTypes(itemLink);
+							if (restoresHealth) then
+								Lunar.Items:ModifyItemDataTable("potionHealing", updateType, itemName, itemCount, itemLevel, itemMinLevel, itemLink);
+							end
+							if (restoresMana) then
+								Lunar.Items:ModifyItemDataTable("potionMana", updateType, itemName, itemCount, itemLevel, itemMinLevel, itemLink);
+							end
 						end
 
 						if (updateMulti) then
